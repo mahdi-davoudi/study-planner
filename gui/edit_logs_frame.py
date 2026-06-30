@@ -1,76 +1,87 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
+import ttkbootstrap as tb
+from tkinter import messagebox
+from utils.helpers import today_str, is_valid_date, minutes_to_hm_text
 
-from utils.helpers import today_str, is_valid_date, minutes_to_hm_text, hm_to_minutes
+SPIN_MAX_MINUTES = 240
+SPIN_STEP = 5
 
 
-class EditLogsFrame(ttk.Frame):
+class EditLogsFrame(tb.Frame):
     def __init__(self, parent, db, on_logs_changed=None):
-        super().__init__(parent, padding=15)
+        super().__init__(parent, padding=20)
         self.db = db
         self.on_logs_changed = on_logs_changed
-        self._logs = [] 
+        self._logs = []
 
         self._build_ui()
         self.load_logs()
 
     def _build_ui(self):
-        title = ttk.Label(self, text="edit/ remove files", font=("Tahoma", 14, "bold"))
-        title.pack(anchor="e", pady=(0, 10))
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(2, weight=1)
 
-        # --- نوار انتخاب تاریخ ---
-        controls = ttk.Frame(self)
-        controls.pack(fill="x", pady=(0, 10))
+        title = tb.Label(self, text="Edit / Delete Saved Records", font=("Tahoma", 16, "bold"))
+        title.grid(row=0, column=0, sticky="e", pady=(0, 15))
 
-        ttk.Label(controls, text="date (YYYY-MM-DD):", font=("Tahoma", 11)).pack(side="right")
-        self.date_entry = ttk.Entry(controls, font=("Tahoma", 11), width=15, justify="center")
+        # --- date selection bar ---
+        controls = tb.Frame(self)
+        controls.grid(row=1, column=0, sticky="ew", pady=(0, 15))
+        controls.columnconfigure(0, weight=1)
+
+        load_btn = tb.Button(controls, text="Show Records for This Day", command=self.load_logs, bootstyle="info")
+        load_btn.grid(row=0, column=2, padx=(8, 0))
+
+        self.date_entry = tb.Entry(controls, font=("Tahoma", 11), width=15, justify="center", bootstyle="primary")
         self.date_entry.insert(0, today_str())
-        self.date_entry.pack(side="right", padx=(0, 8))
+        self.date_entry.grid(row=0, column=1)
         self.date_entry.bind("<Return>", lambda e: self.load_logs())
 
-        load_btn = ttk.Button(controls, text="Show records for this day", command=self.load_logs)
-        load_btn.pack(side="right")
+        tb.Label(controls, text="Date:", font=("Tahoma", 11)).grid(row=0, column=0, sticky="e")
 
-        # --- جدول رکوردها ---
-        table_frame = ttk.Frame(self)
-        table_frame.pack(fill="both", expand=True, pady=(5, 0))
+        # --- records table card ---
+        table_card = tb.Labelframe(self, text="Records for Selected Day", padding=10, bootstyle="primary")
+        table_card.grid(row=2, column=0, sticky="nsew", pady=(0, 15))
+        table_card.columnconfigure(0, weight=1)
+        table_card.rowconfigure(0, weight=1)
 
-        self.tree = ttk.Treeview(
-            table_frame, columns=("subject", "time"), show="headings", height=12
+        self.tree = tb.Treeview(
+            table_card, columns=("subject", "time"), show="headings",
+            height=12, bootstyle="primary"
         )
-        self.tree.heading("subject", text="lesson")
-        self.tree.heading("time", text="study time")
+        self.tree.heading("subject", text="Subject")
+        self.tree.heading("time", text="Study Time")
         self.tree.column("subject", anchor="e", width=220)
         self.tree.column("time", anchor="center", width=160)
-        self.tree.pack(side="right", fill="both", expand=True)
+        self.tree.grid(row=0, column=0, sticky="nsew")
 
-        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
-        scrollbar.pack(side="left", fill="y")
+        scrollbar = tb.Scrollbar(table_card, orient="vertical", command=self.tree.yview, bootstyle="round")
+        scrollbar.grid(row=0, column=1, sticky="ns")
         self.tree.config(yscrollcommand=scrollbar.set)
 
         self.tree.bind("<Double-1>", lambda e: self.edit_selected())
 
-        # --- دکمه‌های عملیات ---
-        action_frame = ttk.Frame(self)
-        action_frame.pack(fill="x", pady=(10, 0))
+        # --- action buttons ---
+        action_frame = tb.Frame(self)
+        action_frame.grid(row=3, column=0, sticky="e")
 
-        delete_btn = ttk.Button(action_frame, text="Delete selected record", command=self.delete_selected)
-        delete_btn.pack(side="right", padx=(5, 0))
+        delete_btn = tb.Button(action_frame, text="Delete Selected Record", command=self.delete_selected, bootstyle="danger")
+        delete_btn.grid(row=0, column=1, padx=(8, 0))
 
-        edit_btn = ttk.Button(action_frame, text="edit time", command=self.edit_selected)
-        edit_btn.pack(side="right")
+        edit_btn = tb.Button(action_frame, text="Edit Time", command=self.edit_selected, bootstyle="warning")
+        edit_btn.grid(row=0, column=0)
 
-        hint = ttk.Label(
-            self, text="Tip: Double-click a row to edit it directly.",
-            font=("Tahoma", 9), foreground="gray"
+        hint = tb.Label(
+            self, text="Tip: double-click a row to edit it directly.",
+            font=("Tahoma", 9), bootstyle="secondary"
         )
-        hint.pack(anchor="e", pady=(8, 0))
+        hint.grid(row=4, column=0, sticky="e", pady=(10, 0))
 
     # ------------------------------------------------------------------
     def load_logs(self):
+        """Read the records for the selected date from the database and display them in the table."""
         date_str = self.date_entry.get().strip()
         if not is_valid_date(date_str):
-            messagebox.showerror("error", "add date like YYYY-MM-DD .")
+            messagebox.showerror("Error", "Enter the date in YYYY-MM-DD format.")
             return
 
         self._logs = self.db.get_logs_by_date(date_str)
@@ -85,12 +96,12 @@ class EditLogsFrame(ttk.Frame):
             ))
 
         if not self._logs:
-            messagebox.showinfo("attention", f"for {date_str} no record")
+            messagebox.showinfo("Notice", f"No records found for {date_str}.")
 
     def _get_selected_log(self):
         selection = self.tree.selection()
         if not selection:
-            messagebox.showinfo("attention", "first, chose a record from the table.")
+            messagebox.showinfo("Notice", "Select a record from the table first.")
             return None
         selected_id = selection[0]
         for log in self._logs:
@@ -103,8 +114,8 @@ class EditLogsFrame(ttk.Frame):
         if not log:
             return
         confirm = messagebox.askyesno(
-            "Confirm deletion",
-            f"delete «{log['subject_name']} - {minutes_to_hm_text(log['duration_minutes'])}» record?"
+            "Confirm Delete",
+            f"Delete the record '{log['subject_name']} - {minutes_to_hm_text(log['duration_minutes'])}'?"
         )
         if confirm:
             self.db.delete_log(log["_id"])
@@ -117,37 +128,32 @@ class EditLogsFrame(ttk.Frame):
         if not log:
             return
 
-        current_hours = log["duration_minutes"] // 60
-        current_minutes = log["duration_minutes"] % 60
-
-        dialog = tk.Toplevel(self)
-        dialog.title("edit study time")
-        dialog.geometry("280x160")
+        dialog = tb.Toplevel(self)
+        dialog.title("Edit Study Time")
+        dialog.geometry("300x180")
         dialog.resizable(False, False)
 
-        ttk.Label(
-            dialog, text=f"lesson: {log['subject_name']}", font=("Tahoma", 11, "bold")
-        ).pack(pady=(15, 10))
+        tb.Label(
+            dialog, text=f"Subject: {log['subject_name']}", font=("Tahoma", 11, "bold")
+        ).pack(pady=(20, 10))
 
-        input_frame = ttk.Frame(dialog)
-        input_frame.pack()
+        minutes_var = tb.IntVar(value=log["duration_minutes"])
+        spin = tb.Spinbox(
+            dialog, from_=0, to=SPIN_MAX_MINUTES, increment=SPIN_STEP,
+            textvariable=minutes_var, width=10, justify="center",
+            bootstyle="primary"
+        )
+        spin.pack(pady=5)
 
-        ttk.Label(input_frame, text="hour:", font=("Tahoma", 10)).pack(side="right", padx=4)
-        hour_entry = ttk.Entry(input_frame, width=6, justify="center")
-        hour_entry.insert(0, str(current_hours))
-        hour_entry.pack(side="right", padx=4)
-
-        ttk.Label(input_frame, text="minute:", font=("Tahoma", 10)).pack(side="right", padx=4)
-        min_entry = ttk.Entry(input_frame, width=6, justify="center")
-        min_entry.insert(0, str(current_minutes))
-        min_entry.pack(side="right", padx=4)
-
-        hour_entry.focus()
+        tb.Label(dialog, text="(value in minutes)", font=("Tahoma", 9), bootstyle="secondary").pack()
 
         def save():
-            new_minutes = hm_to_minutes(hour_entry.get(), min_entry.get())
+            try:
+                new_minutes = int(minutes_var.get())
+            except Exception:
+                new_minutes = 0
             if new_minutes <= 0:
-                messagebox.showwarning("error", "The time entered must be greater than zero.")
+                messagebox.showwarning("Error", "The entered time must be greater than zero.")
                 return
             self.db.update_log_duration(log["_id"], new_minutes)
             dialog.destroy()
@@ -155,5 +161,5 @@ class EditLogsFrame(ttk.Frame):
             if self.on_logs_changed:
                 self.on_logs_changed()
 
-        ttk.Button(dialog, text="save", command=save).pack(pady=15)
+        tb.Button(dialog, text="Save", command=save, bootstyle="success").pack(pady=15)
         dialog.bind("<Return>", lambda e: save())

@@ -1,7 +1,6 @@
 import sys
 import tkinter as tk
 from tkinter import messagebox
-
 from database import DatabaseManager
 from gui.main_window import MainWindow
 
@@ -10,7 +9,6 @@ def main():
     try:
         db = DatabaseManager()
     except ConnectionError as e:
-        # اگر MongoDB در حال اجرا نباشد، یک پیام خطای واضح نشان بده و خارج شو
         root = tk.Tk()
         root.withdraw()
         messagebox.showerror("error for connect to database", str(e))
