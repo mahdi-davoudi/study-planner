@@ -1,61 +1,315 @@
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 from tkinter import messagebox
+import tkinter as tk
+from datetime import datetime, timedelta
+
 from config import MAX_SUBJECT_ROWS
 from utils.helpers import today_str, is_valid_date, minutes_to_hm_text
 
-SPIN_MAX_MINUTES = 240   # max 4 hours per subject in a single Spinbox
-SPIN_STEP = 5             # 5-minute increments
+SPIN_MAX_MINUTES = 240  # max 4 hours per subject in a single Spinbox
+SPIN_STEP = 5  # 5-minute increments
+
+# ---------------------------------------------------------------------------
+# Heatmap visual constants
+# ---------------------------------------------------------------------------
+CELL_SIZE = 12
+CELL_GAP = 3
+CELL_RADIUS = 2
+
+COLOR_EMPTY = "#1c2128"        # 0 minutes - very dark
+COLOR_LIGHT = "#2d5a3d"        # 1-30 minutes - light green
+COLOR_MEDIUM = "#3f9e58"       # 30-90 minutes - green
+COLOR_DARK = "#1c6b32"         # 90-180 minutes - dark green
+COLOR_BRIGHT = "#39ff6a"       # 180+ minutes - bright green
+COLOR_TODAY_BORDER = "#f0ad4e"
+
+WEEKDAY_LABELS = ["Mon", "", "Wed", "", "Fri", "", ""]
+
+
+def _minutes_to_color(total_minutes: int) -> str:
+    if not total_minutes or total_minutes <= 0:
+        return COLOR_EMPTY
+    if total_minutes <= 30:
+        return COLOR_LIGHT
+    if total_minutes <= 90:
+        return COLOR_MEDIUM
+    if total_minutes <= 180:
+        return COLOR_DARK
+    return COLOR_BRIGHT
+
+
+class StudyHeatmap(tb.Frame):
+    """
+    GitHub-style study activity heatmap, drawn entirely with Tkinter Canvas
+    rectangles (no images, no matplotlib). Shows the last ~365 days, colored
+    by total study minutes for that day, with hover tooltips and a click
+    callback so the parent can load / display a day's details.
+    """
+
+    def __init__(self, parent, db, on_day_click=None):
+        super().__init__(parent)
+        self.db = db
+        self.on_day_click = on_day_click
+
+        self._tooltip = None
+        self._day_rects = {}  # canvas item id -> (date_str, total_minutes)
+
+        self.canvas = tk.Canvas(
+            self,
+            bg="#0d1117",
+            highlightthickness=0,
+            height=(CELL_SIZE + CELL_GAP) * 7 + 20,
+        )
+        self.canvas.pack(fill="both", expand=True)
+
+        self.canvas.bind("<Motion>", self._on_motion)
+        self.canvas.bind("<Leave>", self._hide_tooltip)
+        self.canvas.bind("<Button-1>", self._on_click)
+
+        self.refresh()
+
+    # ------------------------------------------------------------------
+    def refresh(self):
+        """Reload data from the database and redraw the heatmap."""
+        self.canvas.delete("all")
+        self._day_rects.clear()
+        self._hide_tooltip()
+
+        today = datetime.now().date()
+        raw_start = today.replace(month=1, day=1)
+        # Align to the Monday of that week so the grid has complete columns.
+        grid_start = raw_start - timedelta(days=raw_start.weekday())
+
+        daily_totals = self.db.get_daily_totals(
+            grid_start.strftime("%Y-%m-%d"),
+            today.strftime("%Y-%m-%d"),
+        )
+
+        total_days = (today - grid_start).days + 1
+        total_weeks = (total_days // 7) + 1
+
+        canvas_width = 30 + total_weeks * (CELL_SIZE + CELL_GAP)
+        self.canvas.configure(scrollregion=(0, 0, canvas_width, (CELL_SIZE + CELL_GAP) * 7 + 20))
+        self.canvas.configure(width=min(canvas_width, 820))
+
+        # Weekday labels
+        for row, label in enumerate(WEEKDAY_LABELS):
+            if label:
+                self.canvas.create_text(
+                    12, 20 + row * (CELL_SIZE + CELL_GAP) + CELL_SIZE // 2,
+                    text=label, fill="#8b949e", font=("Segoe UI", 7), anchor="w"
+                )
+
+        last_month = None
+        day = grid_start
+        col = 0
+        while day <= today:
+            row = day.weekday()  # Monday = 0
+
+            if row == 0 and day.month != last_month:
+                last_month = day.month
+                self.canvas.create_text(
+                    30 + col * (CELL_SIZE + CELL_GAP), 8,
+                    text=day.strftime("%b"), fill="#8b949e",
+                    font=("Segoe UI", 7), anchor="w"
+                )
+
+            date_str = day.strftime("%Y-%m-%d")
+            total_minutes = daily_totals.get(date_str, 0)
+            color = _minutes_to_color(total_minutes)
+
+            x0 = 30 + col * (CELL_SIZE + CELL_GAP)
+            y0 = 20 + row * (CELL_SIZE + CELL_GAP)
+            x1 = x0 + CELL_SIZE
+            y1 = y0 + CELL_SIZE
+
+            is_today = (day == today)
+            outline = COLOR_TODAY_BORDER if is_today else "#0d1117"
+            width = 2 if is_today else 1
+
+            rect_id = self.canvas.create_rectangle(
+                x0, y0, x1, y1,
+                fill=color, outline=outline, width=width
+            )
+            self._day_rects[rect_id] = (date_str, total_minutes)
+
+            if row == 6:
+                col += 1
+            day += timedelta(days=1)
+
+    # ------------------------------------------------------------------
+    def _on_motion(self, event):
+        item = self.canvas.find_closest(event.x, event.y)
+        if not item:
+            self._hide_tooltip()
+            return
+        item_id = item[0]
+        if item_id not in self._day_rects:
+            self._hide_tooltip()
+            return
+
+        bbox = self.canvas.bbox(item_id)
+        if not bbox or not (bbox[0] <= event.x <= bbox[2] and bbox[1] <= event.y <= bbox[3]):
+            self._hide_tooltip()
+            return
+
+        date_str, total_minutes = self._day_rects[item_id]
+        self._show_tooltip(event, date_str, total_minutes)
+
+    def _show_tooltip(self, event, date_str, total_minutes):
+        text = f"Date:\n{date_str}\n\nStudy Time:\n{minutes_to_hm_text(total_minutes)}"
+
+        if self._tooltip is None:
+            self._tooltip = tk.Toplevel(self)
+            self._tooltip.wm_overrideredirect(True)
+            self._tooltip.attributes("-topmost", True)
+            self._label = tk.Label(
+                self._tooltip, text=text, justify="left",
+                bg="#161b22", fg="#e6edf3", font=("Segoe UI", 9),
+                padx=8, pady=6, relief="solid", borderwidth=1
+            )
+            self._label.pack()
+        else:
+            self._label.configure(text=text)
+
+        x = self.canvas.winfo_rootx() + event.x + 16
+        y = self.canvas.winfo_rooty() + event.y + 16
+        self._tooltip.wm_geometry(f"+{x}+{y}")
+        self._tooltip.deiconify()
+
+    def _hide_tooltip(self, event=None):
+        if self._tooltip is not None:
+            self._tooltip.withdraw()
+
+    def _on_click(self, event):
+        item = self.canvas.find_closest(event.x, event.y)
+        if not item:
+            return
+        item_id = item[0]
+        if item_id not in self._day_rects:
+            return
+        date_str, _ = self._day_rects[item_id]
+        if self.on_day_click:
+            self.on_day_click(date_str)
+
+    def destroy(self):
+        self._hide_tooltip()
+        if self._tooltip is not None:
+            self._tooltip.destroy()
+        super().destroy()
 
 
 class AddLogFrame(tb.Frame):
     def __init__(self, parent, db):
         super().__init__(parent, padding=20)
         self.db = db
-        self.subject_docs = []   # list of subject documents from the database
-        self.row_widgets = []    # each item: dict with subject_doc, minutes_var
+        self.subject_docs = []  # list of subject documents from the database
+        self.row_widgets = []  # each item: dict with subject_doc, minutes_var
 
         self._build_ui()
         self.refresh_subjects()
+        self._refresh_stats()
+
+        # Refresh the heatmap whenever this tab becomes visible again, so
+        # edits/deletes made in the "Edit Logs" tab are reflected here too.
+        self.master.bind("<<NotebookTabChanged>>", self._on_tab_changed, add="+")
 
     # ------------------------------------------------------------------
     def _build_ui(self):
-        self.columnconfigure(0, weight=1)
+        self.columnconfigure(0, weight=3)
+        self.columnconfigure(1, weight=2)
+        self.rowconfigure(1, weight=1)
 
         title = tb.Label(self, text="Add Study Log", font=("Tahoma", 16, "bold"))
-        title.grid(row=0, column=0, sticky="e", pady=(0, 15))
+        title.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 15))
+
+        self._build_left_panel()
+        self._build_right_panel()
+
+    # ------------------------------------------------------------------
+    def _build_left_panel(self):
+        left = tb.Frame(self)
+        left.grid(row=1, column=0, sticky="nsew", padx=(0, 15))
+        left.columnconfigure(0, weight=1)
+
+        # --- stats row ---
+        stats_frame = tb.Frame(left)
+        stats_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        stats_frame.columnconfigure((0, 1, 2), weight=1)
+
+        self.streak_label = tb.Label(
+            stats_frame, text="", font=("Tahoma", 10, "bold"), bootstyle="warning"
+        )
+        self.streak_label.grid(row=0, column=0, sticky="w")
+
+        self.week_label = tb.Label(
+            stats_frame, text="", font=("Tahoma", 10), bootstyle="info"
+        )
+        self.week_label.grid(row=0, column=1)
+
+        self.month_label = tb.Label(
+            stats_frame, text="", font=("Tahoma", 10), bootstyle="success"
+        )
+        self.month_label.grid(row=0, column=2, sticky="e")
+
+        # --- heatmap card ---
+        current_year = datetime.now().year
+        heatmap_card = tb.Labelframe(
+            left, text=f"Study Activity ({current_year})", padding=12, bootstyle="primary"
+        )
+        heatmap_card.grid(row=1, column=0, sticky="nsew")
+        heatmap_card.columnconfigure(0, weight=1)
+        left.rowconfigure(1, weight=1)
+
+        self.heatmap = StudyHeatmap(heatmap_card, self.db, on_day_click=self._on_heatmap_day_click)
+        self.heatmap.grid(row=0, column=0, sticky="ew")
+
+        hint = tb.Label(
+            heatmap_card,
+            text="Tip: click a day to load its date and see what was studied.",
+            font=("Tahoma", 9), bootstyle="secondary"
+        )
+        hint.grid(row=1, column=0, sticky="w", pady=(8, 0))
+
+    # ------------------------------------------------------------------
+    def _build_right_panel(self):
+        right = tb.Frame(self)
+        right.grid(row=1, column=1, sticky="nsew")
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(2, weight=1)
 
         # --- date row ---
-        date_frame = tb.Frame(self)
-        date_frame.grid(row=1, column=0, sticky="ew", pady=(0, 15))
+        date_frame = tb.Frame(right)
+        date_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         date_frame.columnconfigure(0, weight=1)
 
-        tb.Label(date_frame, text="Date:", font=("Tahoma", 11)).grid(row=0, column=2, sticky="e", padx=(8, 0))
+        tb.Label(date_frame, text="Date:", font=("Tahoma", 11)).grid(row=0, column=0, sticky="w")
         self.date_entry = tb.Entry(date_frame, font=("Tahoma", 11), width=15, justify="center", bootstyle="primary")
         self.date_entry.insert(0, today_str())
         self.date_entry.grid(row=0, column=1, sticky="e")
 
         # --- subject rows card ---
-        card = tb.Labelframe(self, text="Subjects and Study Duration", padding=15, bootstyle="primary")
-        card.grid(row=2, column=0, sticky="nsew", pady=(0, 15))
+        card = tb.Labelframe(right, text="Subjects and Study Duration", padding=15, bootstyle="primary")
+        card.grid(row=1, column=0, rowspan=2, sticky="nsew", pady=(0, 15))
         card.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
+        card.rowconfigure(1, weight=1)
 
         # column headers
         header = tb.Frame(card)
         header.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        header.columnconfigure(0, weight=1)
+        header.columnconfigure(1, weight=1)
 
+        tb.Label(header, text="Minutes", font=("Tahoma", 10, "bold")).grid(row=0, column=0, sticky="w")
         tb.Label(header, text="Subject", font=("Tahoma", 10, "bold")).grid(row=0, column=1, sticky="e")
-        tb.Label(header, text="Minutes", font=("Tahoma", 10, "bold")).grid(row=0, column=0, sticky="w", padx=(0, 10))
 
         # scrollable area for subject rows
         scroll_container = tb.Frame(card)
         scroll_container.grid(row=1, column=0, sticky="nsew")
-        card.rowconfigure(1, weight=1)
         scroll_container.columnconfigure(0, weight=1)
+        scroll_container.rowconfigure(0, weight=1)
 
-        self.canvas = tb.Canvas(scroll_container, highlightthickness=0, height=260)
+        self.canvas = tk.Canvas(scroll_container, highlightthickness=0, bg="#222222")
         v_scroll = tb.Scrollbar(scroll_container, orient="vertical", command=self.canvas.yview, bootstyle="round")
         self.rows_frame = tb.Frame(self.canvas)
 
@@ -71,12 +325,12 @@ class AddLogFrame(tb.Frame):
 
         # --- submit button ---
         submit_btn = tb.Button(
-            self, text="Save Today's Study Log", command=self.submit,
+            right, text="Save Today's Study Log", command=self.submit,
             bootstyle="success", width=22
         )
         submit_btn.grid(row=3, column=0, pady=(5, 5))
 
-        self.status_label = tb.Label(self, text="", font=("Tahoma", 10), bootstyle="secondary")
+        self.status_label = tb.Label(right, text="", font=("Tahoma", 10), bootstyle="secondary")
         self.status_label.grid(row=4, column=0, pady=(5, 0))
 
     # ------------------------------------------------------------------
@@ -101,11 +355,11 @@ class AddLogFrame(tb.Frame):
             empty_label.grid(row=0, column=0, pady=20, sticky="ew")
             return
 
-        self.rows_frame.columnconfigure(0, weight=1)
+        self.rows_frame.columnconfigure(1, weight=1)
 
         for i, doc in enumerate(rows_to_show):
             row = tb.Frame(self.rows_frame)
-            row.grid(row=i, column=0, sticky="ew", pady=4)
+            row.grid(row=i, column=0, columnspan=2, sticky="ew", pady=4)
             row.columnconfigure(1, weight=1)
 
             minutes_var = tb.IntVar(value=0)
@@ -123,6 +377,49 @@ class AddLogFrame(tb.Frame):
                 "subject_doc": doc,
                 "minutes_var": minutes_var,
             })
+
+    # ------------------------------------------------------------------
+    def _refresh_stats(self):
+        streak = self.db.get_current_streak()
+        week_total = self.db.get_week_total()
+        month_total = self.db.get_month_total()
+
+        self.streak_label.config(text=f"🔥 Streak: {streak} day{'s' if streak != 1 else ''}")
+        self.week_label.config(text=f"This week: {minutes_to_hm_text(week_total)}")
+        self.month_label.config(text=f"This month: {minutes_to_hm_text(month_total)}")
+
+    def _refresh_all(self):
+        self.heatmap.refresh()
+        self._refresh_stats()
+
+    def _on_tab_changed(self, event=None):
+        try:
+            current_tab = self.master.select()
+            current_widget = self.master.nametowidget(current_tab)
+        except Exception:
+            return
+        if current_widget is self:
+            self._refresh_all()
+
+    # ------------------------------------------------------------------
+    def _on_heatmap_day_click(self, date_str):
+        """
+        Called when a heatmap square is clicked. Loads that day into the
+        date field and shows a summary of what was studied that day.
+        """
+        self.date_entry.delete(0, "end")
+        self.date_entry.insert(0, date_str)
+
+        logs = self.db.get_logs_by_date(date_str)
+        if not logs:
+            messagebox.showinfo("Day Details", f"No study records found for {date_str}.")
+            return
+
+        lines = [f"{log['subject_name']}: {minutes_to_hm_text(log['duration_minutes'])}" for log in logs]
+        total = sum(log["duration_minutes"] for log in logs)
+        lines.append(f"\nTotal: {minutes_to_hm_text(total)}")
+
+        messagebox.showinfo("Day Details", f"{date_str}\n\n" + "\n".join(lines))
 
     # ------------------------------------------------------------------
     def submit(self):
@@ -161,3 +458,6 @@ class AddLogFrame(tb.Frame):
 
         for row in self.row_widgets:
             row["minutes_var"].set(0)
+
+        # Keep the heatmap and stats in sync after saving.
+        self._refresh_all()
