@@ -1,11 +1,5 @@
-# -*- coding: utf-8 -*-
+import os
 
-
-MONGO_HOST = "localhost"
-MONGO_PORT = 27017
-
-DB_NAME = "study_planner_db"
-SUBJECTS_COLLECTION = "subjects"
-LOGS_COLLECTION = "study_logs"
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "study_planner.db")
 
 MAX_SUBJECT_ROWS = 12
