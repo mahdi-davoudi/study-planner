@@ -8,19 +8,14 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from utils.helpers import today_str, is_valid_date, minutes_to_hm_text
 
-# ---------------------------------------------------------------------------
-# Optional ttkbootstrap DateEntry - fall back to a plain Entry if the
-# installed ttkbootstrap version does not ship it.
-# ---------------------------------------------------------------------------
+# Optional ttkbootstrap DateEntry - fall back to a plain Entry if the installed ttkbootstrap version does not ship it.
 try:
     from ttkbootstrap.widgets import DateEntry
     HAS_DATEENTRY = True
 except ImportError:
     HAS_DATEENTRY = False
 
-# ---------------------------------------------------------------------------
 # Optional Arabic/Persian shaping for the chart legend.
-# ---------------------------------------------------------------------------
 try:
     import arabic_reshaper
     from bidi.algorithm import get_display
@@ -41,9 +36,7 @@ except ImportError:
     def _fix_rtl(text: str) -> str:
         return text
 
-# ---------------------------------------------------------------------------
 # Dark, ttkbootstrap-"darkly" friendly chart colors
-# ---------------------------------------------------------------------------
 CHART_BG = "#222222"
 CHART_TEXT = "#e6edf3"
 CHART_SUBTEXT = "#8b949e"
@@ -53,8 +46,6 @@ SLICE_COLORS = [
     "#4ade80", "#c084fc",
 ]
 
-# Slices smaller than this share of the total are not labeled with a
-# percentage on the chart itself, to avoid clutter/overlap.
 MIN_LABELED_PERCENT = 4.0
 
 # Legend wraps into a second column once there are more subjects than this.
@@ -62,12 +53,6 @@ LEGEND_WRAP_THRESHOLD = 8
 
 
 class ReportFrame(tb.Frame):
-    """
-    Study report tab: a date-range picker, a donut chart, a results table
-    and a small statistics card, all driven off a single database query
-    per action (range summary / day details / total study).
-    """
-
     def __init__(self, parent, db):
         super().__init__(parent, padding=15)
 
@@ -79,10 +64,7 @@ class ReportFrame(tb.Frame):
 
         self.build_ui()
 
-    # -------------------------------------------------------------
     # UI construction
-    # -------------------------------------------------------------
-
     def build_ui(self):
         self._build_title()
         self._build_date_range_card()
@@ -140,8 +122,6 @@ class ReportFrame(tb.Frame):
         ).grid(row=0, column=6, sticky="w", padx=5)
 
     def _make_date_widget(self, parent):
-        """Create a DateEntry when available, otherwise a plain Entry
-        pre-filled with today's date in YYYY-MM-DD format."""
         if HAS_DATEENTRY:
             widget = DateEntry(parent, dateformat="%Y-%m-%d", width=12, bootstyle="primary")
         else:
@@ -167,9 +147,6 @@ class ReportFrame(tb.Frame):
         chart_widget = self.chart_canvas.get_tk_widget()
         chart_widget.grid(row=0, column=0, sticky="nsew")
 
-        # Keep the matplotlib figure in sync with the widget's actual pixel
-        # size so the donut resizes smoothly with the window instead of
-        # staying locked to its initial figsize.
         chart_widget.bind("<Configure>", self._on_chart_resize)
 
     def _build_results_card(self):
@@ -210,7 +187,6 @@ class ReportFrame(tb.Frame):
         self.tree.configure(yscrollcommand=scrollbar.set)
 
     def _build_statistics_card(self):
-        """Statistics card, placed directly under the chart."""
         stats_card = tb.Labelframe(
             self,
             text="Statistics",
@@ -235,20 +211,13 @@ class ReportFrame(tb.Frame):
         label.grid(row=row, column=column, sticky="w", pady=3, padx=5)
         return label
 
-    # -------------------------------------------------------------
     # Resize handling
-    # -------------------------------------------------------------
-
     def _on_chart_resize(self, event):
         if event.width < 50 or event.height < 50:
             return
         dpi = self.figure.get_dpi()
         self.figure.set_size_inches(event.width / dpi, event.height / dpi)
         self.chart_canvas.draw_idle()
-
-    # -------------------------------------------------------------
-    # Date helpers
-    # -------------------------------------------------------------
 
     def _read_date(self, widget):
         """Return the YYYY-MM-DD text from either a DateEntry or an Entry."""
@@ -257,10 +226,6 @@ class ReportFrame(tb.Frame):
         return widget.get().strip()
 
     def _get_validated_range(self):
-        """
-        Read and validate the selected date range. Shows an error dialog
-        and returns None if the range is invalid.
-        """
         start = self._read_date(self.start_date_entry)
         end = self._read_date(self.end_date_entry)
 
@@ -274,12 +239,7 @@ class ReportFrame(tb.Frame):
 
         return start, end
 
-    # -------------------------------------------------------------
-    # Actions (each performs exactly one database query)
-    # -------------------------------------------------------------
-
     def show_range_summary(self):
-        """Table AND donut both show the selected date range."""
         date_range = self._get_validated_range()
         if date_range is None:
             return
@@ -289,7 +249,6 @@ class ReportFrame(tb.Frame):
         self._apply_summary(summary)
 
     def show_day_detail(self):
-        """Table and donut both show a single day (the 'From' date)."""
         date = self._read_date(self.start_date_entry)
 
         if not is_valid_date(date):
@@ -300,27 +259,16 @@ class ReportFrame(tb.Frame):
         self._apply_summary(summary)
 
     def show_total_study(self):
-        """Table and donut both show all recorded study history."""
         summary = self.db.get_subject_percentages()
         self._apply_summary(summary)
 
-    # -------------------------------------------------------------
     # Rendering (table + donut + statistics all share one summary)
-    # -------------------------------------------------------------
-
     def _apply_summary(self, summary):
-        """Update every view (table, donut, statistics) from one query result."""
         self._render_table(summary)
         self._draw_donut(summary)
         self._update_statistics(summary)
 
     def _render_table(self, summary):
-        """
-        Populate the results table from a list of
-        {subject_name, total_minutes, percentage} dicts.
-        Rows already arrive sorted by total study time descending
-        (the database query sorts by total_minutes).
-        """
         for row in self.tree.get_children():
             self.tree.delete(row)
 
@@ -356,10 +304,6 @@ class ReportFrame(tb.Frame):
         )
 
     def _draw_donut(self, summary):
-        """
-        Draw the donut chart for the given summary. The total is computed
-        here from the summary itself, so callers never need to pass it in.
-        """
         total_minutes = sum(item["total_minutes"] for item in summary)
 
         self.ax.clear()
@@ -375,8 +319,6 @@ class ReportFrame(tb.Frame):
         colors = [SLICE_COLORS[i % len(SLICE_COLORS)] for i in range(len(summary))]
 
         def autopct(pct):
-            # Hide the percentage text on very small slices to avoid
-            # overlapping labels when there are many subjects.
             return f"{pct:.1f}%" if pct >= MIN_LABELED_PERCENT else ""
 
         wedges, _texts, _autotexts = self.ax.pie(
@@ -393,8 +335,7 @@ class ReportFrame(tb.Frame):
         self._draw_legend(wedges, labels)
 
         self.ax.axis("equal")
-        # Leave room on the right for the legend; the fractions below are
-        # relative, so they hold up when the figure is resized.
+        # Leave room on the right for the legend; the fractions below are relative, so they hold up when the figure is resized.
         legend_cols = 2 if len(summary) > LEGEND_WRAP_THRESHOLD else 1
         right_margin = 0.55 if legend_cols == 2 else 0.68
         self.figure.subplots_adjust(left=0.02, right=right_margin, top=0.95, bottom=0.05)

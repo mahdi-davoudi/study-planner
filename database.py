@@ -8,7 +8,6 @@ from utils.helpers import now_iso
 
 class DatabaseManager:
     # Lifecycle
-    # -----------------------------------------------------------------
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
         self.connection: Optional[sqlite3.Connection] = None
@@ -72,9 +71,7 @@ class DatabaseManager:
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_logs_date ON logs(date)")
 
-    # ===================================================================
     # Subjects
-    # ===================================================================
     def add_subject(self, name: str) -> Optional[int]:
         name = name.strip()
         if not name:
@@ -112,9 +109,7 @@ class DatabaseManager:
                 (new_name, subject_id),
             )
 
-    # ===================================================================
     # Study Logs
-    # ===================================================================
     def add_log(
         self,
         date: str,
@@ -202,9 +197,7 @@ class DatabaseManager:
                 (new_duration_minutes, log_id),
             )
 
-    # ===================================================================
     # Reporting / analytics
-    # ===================================================================
     def get_summary_by_subject(
         self, start_date: str = None, end_date: str = None
     ) -> List[Dict[str, Any]]:
@@ -241,7 +234,6 @@ class DatabaseManager:
         return result
 
     def get_daily_totals(self, start_date: str, end_date: str) -> Dict[str, int]:
-        """Used by the heatmap: {date_str: total_minutes} for the range."""
         rows = self._fetch_all(
             """
             SELECT date, SUM(duration_minutes) AS total_minutes
@@ -278,7 +270,6 @@ class DatabaseManager:
         return streak
 
     def get_week_total(self) -> int:
-        """Return total study minutes for the current week (Monday to today)."""
         today = datetime.now()
         start_of_week = today - timedelta(days=today.weekday())
         return self.get_total_minutes(
@@ -287,7 +278,6 @@ class DatabaseManager:
         )
 
     def get_month_total(self) -> int:
-        """Return total study minutes for the current calendar month."""
         today = datetime.now()
         start_of_month = today.replace(day=1)
         return self.get_total_minutes(
@@ -295,9 +285,7 @@ class DatabaseManager:
             today.strftime("%Y-%m-%d"),
         )
 
-    # ===================================================================
     # Internal helpers
-    # ===================================================================
     def _fetch_all(self, query: str, params: tuple = ()) -> List[Dict[str, Any]]:
         with self._cursor() as cur:
             cur.execute(query, params)

@@ -7,21 +7,19 @@ from datetime import datetime, timedelta
 from config import MAX_SUBJECT_ROWS
 from utils.helpers import today_str, is_valid_date, minutes_to_hm_text
 
-SPIN_MAX_MINUTES = 240  # max 4 hours per subject in a single Spinbox
-SPIN_STEP = 5  # 5-minute increments
+SPIN_MAX_MINUTES = 240  
+SPIN_STEP = 5  
 
-# ---------------------------------------------------------------------------
 # Heatmap visual constants
-# ---------------------------------------------------------------------------
 CELL_SIZE = 12
 CELL_GAP = 3
 CELL_RADIUS = 2
 
-COLOR_EMPTY = "#1c2128"        # 0 minutes - very dark
-COLOR_LIGHT = "#2d5a3d"        # 1-30 minutes - light green
-COLOR_MEDIUM = "#3f9e58"       # 30-90 minutes - green
-COLOR_DARK = "#1c6b32"         # 90-180 minutes - dark green
-COLOR_BRIGHT = "#39ff6a"       # 180+ minutes - bright green
+COLOR_EMPTY = "#1c2128"        
+COLOR_LIGHT = "#2d5a3d"        
+COLOR_MEDIUM = "#3f9e58"       
+COLOR_DARK = "#1c6b32"         
+COLOR_BRIGHT = "#39ff6a"       
 COLOR_TODAY_BORDER = "#f0ad4e"
 
 WEEKDAY_LABELS = ["Mon", "", "Wed", "", "Fri", "", ""]
@@ -40,20 +38,13 @@ def _minutes_to_color(total_minutes: int) -> str:
 
 
 class StudyHeatmap(tb.Frame):
-    """
-    GitHub-style study activity heatmap, drawn entirely with Tkinter Canvas
-    rectangles (no images, no matplotlib). Shows the last ~365 days, colored
-    by total study minutes for that day, with hover tooltips and a click
-    callback so the parent can load / display a day's details.
-    """
-
     def __init__(self, parent, db, on_day_click=None):
         super().__init__(parent)
         self.db = db
         self.on_day_click = on_day_click
 
         self._tooltip = None
-        self._day_rects = {}  # canvas item id -> (date_str, total_minutes)
+        self._day_rects = {}  
 
         self.canvas = tk.Canvas(
             self,
@@ -68,17 +59,15 @@ class StudyHeatmap(tb.Frame):
         self.canvas.bind("<Button-1>", self._on_click)
 
         self.refresh()
-
-    # ------------------------------------------------------------------
+ 
+ 
     def refresh(self):
-        """Reload data from the database and redraw the heatmap."""
         self.canvas.delete("all")
         self._day_rects.clear()
         self._hide_tooltip()
 
         today = datetime.now().date()
         raw_start = today.replace(month=1, day=1)
-        # Align to the Monday of that week so the grid has complete columns.
         grid_start = raw_start - timedelta(days=raw_start.weekday())
 
         daily_totals = self.db.get_daily_totals(
@@ -105,7 +94,7 @@ class StudyHeatmap(tb.Frame):
         day = grid_start
         col = 0
         while day <= today:
-            row = day.weekday()  # Monday = 0
+            row = day.weekday() 
 
             if row == 0 and day.month != last_month:
                 last_month = day.month
@@ -138,7 +127,7 @@ class StudyHeatmap(tb.Frame):
                 col += 1
             day += timedelta(days=1)
 
-    # ------------------------------------------------------------------
+
     def _on_motion(self, event):
         item = self.canvas.find_closest(event.x, event.y)
         if not item:
@@ -204,15 +193,11 @@ class AddLogFrame(tb.Frame):
     def __init__(self, parent, db):
         super().__init__(parent, padding=20)
         self.db = db
-        self.subject_docs = []  # list of subject documents from the database
-        self.row_widgets = []  # each item: dict with subject_doc, minutes_var
-
+        self.subject_docs = []  
+        self.row_widgets = []  
         self._build_ui()
         self.refresh_subjects()
         self._refresh_stats()
-
-        # Refresh the heatmap whenever this tab becomes visible again, so
-        # edits/deletes made in the "Edit Logs" tab are reflected here too.
         self.master.bind("<<NotebookTabChanged>>", self._on_tab_changed, add="+")
 
     # ------------------------------------------------------------------
@@ -253,7 +238,6 @@ class AddLogFrame(tb.Frame):
         )
         self.month_label.grid(row=0, column=2, sticky="e")
 
-        # --- heatmap card ---
         current_year = datetime.now().year
         heatmap_card = tb.Labelframe(
             left, text=f"Study Activity ({current_year})", padding=12, bootstyle="primary"
@@ -272,14 +256,13 @@ class AddLogFrame(tb.Frame):
         )
         hint.grid(row=1, column=0, sticky="w", pady=(8, 0))
 
-    # ------------------------------------------------------------------
     def _build_right_panel(self):
         right = tb.Frame(self)
         right.grid(row=1, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
         right.rowconfigure(2, weight=1)
 
-        # --- date row ---
+        # date row
         date_frame = tb.Frame(right)
         date_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         date_frame.columnconfigure(0, weight=1)
@@ -289,7 +272,7 @@ class AddLogFrame(tb.Frame):
         self.date_entry.insert(0, today_str())
         self.date_entry.grid(row=0, column=1, sticky="e")
 
-        # --- subject rows card ---
+        # subject rows card
         card = tb.Labelframe(right, text="Subjects and Study Duration", padding=15, bootstyle="primary")
         card.grid(row=1, column=0, rowspan=2, sticky="nsew", pady=(0, 15))
         card.columnconfigure(0, weight=1)
@@ -323,7 +306,7 @@ class AddLogFrame(tb.Frame):
         self.canvas.grid(row=0, column=0, sticky="nsew")
         v_scroll.grid(row=0, column=1, sticky="ns")
 
-        # --- submit button ---
+        # submit button
         submit_btn = tb.Button(
             right, text="Save Today's Study Log", command=self.submit,
             bootstyle="success", width=22
@@ -333,12 +316,7 @@ class AddLogFrame(tb.Frame):
         self.status_label = tb.Label(right, text="", font=("Tahoma", 10), bootstyle="secondary")
         self.status_label.grid(row=4, column=0, pady=(5, 0))
 
-    # ------------------------------------------------------------------
     def refresh_subjects(self):
-        """
-        Reload the subject list from the database and rebuild the form rows.
-        Up to MAX_SUBJECT_ROWS rows are shown (fewer if fewer subjects exist).
-        """
         for child in self.rows_frame.winfo_children():
             child.destroy()
         self.row_widgets.clear()
@@ -378,7 +356,6 @@ class AddLogFrame(tb.Frame):
                 "minutes_var": minutes_var,
             })
 
-    # ------------------------------------------------------------------
     def _refresh_stats(self):
         streak = self.db.get_current_streak()
         week_total = self.db.get_week_total()
@@ -401,12 +378,7 @@ class AddLogFrame(tb.Frame):
         if current_widget is self:
             self._refresh_all()
 
-    # ------------------------------------------------------------------
     def _on_heatmap_day_click(self, date_str):
-        """
-        Called when a heatmap square is clicked. Loads that day into the
-        date field and shows a summary of what was studied that day.
-        """
         self.date_entry.delete(0, "end")
         self.date_entry.insert(0, date_str)
 
@@ -459,5 +431,4 @@ class AddLogFrame(tb.Frame):
         for row in self.row_widgets:
             row["minutes_var"].set(0)
 
-        # Keep the heatmap and stats in sync after saving.
         self._refresh_all()

@@ -23,7 +23,7 @@ class EditLogsFrame(tb.Frame):
         title = tb.Label(self, text="Edit / Delete Saved Records", font=("Tahoma", 16, "bold"))
         title.grid(row=0, column=0, sticky="e", pady=(0, 15))
 
-        # --- date selection bar ---
+        # date selection bar
         controls = tb.Frame(self)
         controls.grid(row=1, column=0, sticky="ew", pady=(0, 15))
         controls.columnconfigure(0, weight=1)
@@ -38,7 +38,7 @@ class EditLogsFrame(tb.Frame):
 
         tb.Label(controls, text="Date:", font=("Tahoma", 11)).grid(row=0, column=0, sticky="e")
 
-        # --- records table card ---
+        # records table card 
         table_card = tb.Labelframe(self, text="Records for Selected Day", padding=10, bootstyle="primary")
         table_card.grid(row=2, column=0, sticky="nsew", pady=(0, 15))
         table_card.columnconfigure(0, weight=1)
@@ -60,7 +60,7 @@ class EditLogsFrame(tb.Frame):
 
         self.tree.bind("<Double-1>", lambda e: self.edit_selected())
 
-        # --- action buttons ---
+        # action buttons 
         action_frame = tb.Frame(self)
         action_frame.grid(row=3, column=0, sticky="e")
 
@@ -76,9 +76,7 @@ class EditLogsFrame(tb.Frame):
         )
         hint.grid(row=4, column=0, sticky="e", pady=(10, 0))
 
-    # ------------------------------------------------------------------
     def load_logs(self):
-        """Read the records for the selected date from the database and display them in the table."""
         date_str = self.date_entry.get().strip()
         if not is_valid_date(date_str):
             messagebox.showerror("Error", "Enter the date in YYYY-MM-DD format.")

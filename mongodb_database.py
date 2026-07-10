@@ -27,9 +27,7 @@ class DatabaseManager:
                 f"{MONGO_HOST}:{MONGO_PORT} is running"
             ) from e
 
-    # ---------------------------------------------------------------------
     # Subjects
-    # ---------------------------------------------------------------------
     def add_subject(self, name: str):
         name = name.strip()
         if not name:
@@ -59,9 +57,7 @@ class DatabaseManager:
             {"$set": {"name": new_name}}
         )
 
-    # ---------------------------------------------------------------------
     # Study Logs
-    # ---------------------------------------------------------------------
     def add_log(self, date: str, subject_id, subject_name: str, duration_minutes: int, note: str = ""):
         if duration_minutes <= 0:
             return None
@@ -137,14 +133,8 @@ class DatabaseManager:
         results = list(self.db[LOGS_COLLECTION].aggregate(pipeline))
         return [{"subject_name": r["_id"], "total_minutes": r["total_minutes"]} for r in results]
 
-    # ---------------------------------------------------------------------
     # Reporting / analytics helpers
-    # ---------------------------------------------------------------------
     def get_subject_percentages(self, start_date: str = None, end_date: str = None):
-        """
-        Return the study summary per subject, each entry annotated with its
-        percentage share of the total study time in the given range.
-        """
         summary = self.get_summary_by_subject(start_date, end_date)
         total = sum(item["total_minutes"] for item in summary)
 
@@ -159,7 +149,6 @@ class DatabaseManager:
         return result
 
     def get_total_minutes(self, start_date: str = None, end_date: str = None):
-        """Return the total study minutes in the given date range (or all time)."""
         match_stage = {}
         if start_date and end_date:
             match_stage["date"] = {"$gte": start_date, "$lte": end_date}
@@ -173,11 +162,6 @@ class DatabaseManager:
         return results[0]["total_minutes"] if results else 0
 
     def get_daily_totals(self, start_date: str, end_date: str):
-        """
-        Return a dict mapping 'YYYY-MM-DD' -> total study minutes for that day,
-        for every day in the range that has at least one log. Used to feed the
-        study activity heatmap.
-        """
         pipeline = [
             {"$match": {"date": {"$gte": start_date, "$lte": end_date}}},
             {"$group": {"_id": "$date", "total_minutes": {"$sum": "$duration_minutes"}}},
@@ -186,10 +170,6 @@ class DatabaseManager:
         return {r["_id"]: r["total_minutes"] for r in results}
 
     def get_current_streak(self):
-        """
-        Return the current study streak in days: the number of consecutive
-        days (ending today) that have at least one study log.
-        """
         streak = 0
         day = datetime.now()
 
@@ -205,7 +185,6 @@ class DatabaseManager:
         return streak
 
     def get_week_total(self):
-        """Return total study minutes for the current week (Monday to today)."""
         today = datetime.now()
         start_of_week = today - timedelta(days=today.weekday())
         return self.get_total_minutes(
@@ -214,7 +193,6 @@ class DatabaseManager:
         )
 
     def get_month_total(self):
-        """Return total study minutes for the current calendar month."""
         today = datetime.now()
         start_of_month = today.replace(day=1)
         return self.get_total_minutes(

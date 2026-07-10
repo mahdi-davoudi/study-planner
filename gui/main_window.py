@@ -4,7 +4,6 @@ from gui.manage_subjects_frame import ManageSubjectsFrame
 from gui.report_frame import ReportFrame
 from gui.edit_logs_frame import EditLogsFrame
 
-
 DARK_THEME = "darkly"
 
 
@@ -16,7 +15,6 @@ class MainWindow(tb.Window):
 
         self.title("Study Planner")
 
-        # ---------- Window Size ----------
         window_width = 1100
         window_height = 700
 
@@ -29,18 +27,13 @@ class MainWindow(tb.Window):
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
         self.minsize(900, 600)
 
-        # ---------- Optional Icon ----------
         try:
             self.iconbitmap("assets/icons/icon.ico")
         except Exception:
             pass
 
         self._build_ui()
-
-        # Focus on the main window
         self.focus_force()
-
-    # --------------------------------------------------
 
     def _build_ui(self):
 
@@ -57,7 +50,7 @@ class MainWindow(tb.Window):
             pady=18
         )
 
-        # ---------------- Pages ----------------
+        # Pages 
 
         self.add_log_frame = AddLogFrame(
             self.notebook,
@@ -81,8 +74,6 @@ class MainWindow(tb.Window):
             on_logs_changed=self._on_logs_changed
         )
 
-        # ---------------- Tabs ----------------
-
         self.notebook.add(
             self.add_log_frame,
             text="📝 Add Study"
@@ -103,22 +94,10 @@ class MainWindow(tb.Window):
             text="✏ Edit Logs"
         )
 
-        # Open first tab by default
         self.notebook.select(0)
 
-    # --------------------------------------------------
-
     def _on_subjects_changed(self):
-        """
-        Refresh the subject list in Add Study tab
-        after a subject is added/edited/deleted.
-        """
         self.add_log_frame.refresh_subjects()
 
-    # --------------------------------------------------
-
     def _on_logs_changed(self):
-        """
-        Refresh report after editing/deleting logs.
-        """
         self.report_frame.show_range_summary()

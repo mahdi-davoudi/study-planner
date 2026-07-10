@@ -18,7 +18,7 @@ class ManageSubjectsFrame(tb.Frame):
         title = tb.Label(self, text="Manage Subjects", font=("Tahoma", 16, "bold"))
         title.grid(row=0, column=0, sticky="e", pady=(0, 15))
 
-        # --- add new subject section ---
+        # add new subject section
         add_frame = tb.Frame(self)
         add_frame.grid(row=1, column=0, sticky="ew", pady=(0, 15))
         add_frame.columnconfigure(0, weight=1)
@@ -30,7 +30,7 @@ class ManageSubjectsFrame(tb.Frame):
         self.new_subject_entry.grid(row=0, column=0, sticky="ew")
         self.new_subject_entry.bind("<Return>", lambda e: self.add_subject())
 
-        # --- subject list card ---
+        # subject list card
         card = tb.Labelframe(self, text="Subject List", padding=10, bootstyle="primary")
         card.grid(row=2, column=0, sticky="nsew", pady=(0, 15))
         card.columnconfigure(0, weight=1)
@@ -45,7 +45,7 @@ class ManageSubjectsFrame(tb.Frame):
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.listbox.config(yscrollcommand=scrollbar.set)
 
-        # --- action buttons for the selected subject ---
+        # action buttons for the selected subject 
         action_frame = tb.Frame(self)
         action_frame.grid(row=3, column=0, sticky="e")
 
@@ -58,7 +58,7 @@ class ManageSubjectsFrame(tb.Frame):
         self._subject_docs = []
 
     def refresh_list(self):
-        """Reload the subject list from the database and display it in the table."""
+        # Reload the subject list from the database and display it in the table.
         self._subject_docs = self.db.get_subjects()
         for row in self.listbox.get_children():
             self.listbox.delete(row)
