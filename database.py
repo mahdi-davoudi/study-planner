@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from config import DB_PATH
 from utils.helpers import now_iso
+from datetime import date, datetime, timedelta
 
 
 class DatabaseManager:
@@ -18,6 +19,7 @@ class DatabaseManager:
             self.connection = sqlite3.connect(self.db_path)
             self.connection.row_factory = self._row_factory
             self.connection.execute("PRAGMA foreign_keys = ON")
+            self.connection.execute("PRAGMA journal_mode = WAL")
             self._create_schema()
         except sqlite3.Error as e:
             raise ConnectionError(
@@ -99,15 +101,17 @@ class DatabaseManager:
         with self._cursor() as cur:
             cur.execute("DELETE FROM subjects WHERE id = ?", (subject_id,))
 
-    def rename_subject(self, subject_id, new_name: str) -> None:
+    def rename_subject(self, subject_id: int, new_name: str) -> bool:
         new_name = new_name.strip()
         if not new_name:
-            return
-        with self._cursor() as cur:
-            cur.execute(
-                "UPDATE subjects SET name = ? WHERE id = ?",
-                (new_name, subject_id),
-            )
+            return False
+        try:
+            with self._cursor() as cur:
+                cur.execute("UPDATE subjects SET name = ? WHERE id = ?", (new_name, subject_id))
+                cur.execute("UPDATE logs SET subject_name = ? WHERE subject_id = ?", (new_name, subject_id))
+        except sqlite3.IntegrityError:
+            return False  
+        return True
 
     # Study Logs
     def add_log(
@@ -131,33 +135,31 @@ class DatabaseManager:
             )
             return cur.lastrowid
 
-    def add_logs_bulk(self, date: str, entries: list) -> int:
-        rows = []
-        for e in entries:
-            if e["duration_minutes"] <= 0:
-                continue
-            rows.append((
-                date,
-                e.get("subject_id"),
-                e["subject_name"],
-                e["duration_minutes"],
-                e.get("note", ""),
-                now_iso(),
-            ))
-
-        if not rows:
-            return 0
-
+    def add_logs_bulk(self, date: str, entries: list[dict[str, Any]]) -> int:
+        saved = 0
         with self._cursor() as cur:
-            cur.executemany(
-                """
-                INSERT INTO logs (date, subject_id, subject_name, duration_minutes, note, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                rows,
-            )
-        return len(rows)
-
+            for e in entries:
+                minutes = e["duration_minutes"]
+                if minutes <= 0:
+                    continue
+                cur.execute(
+                    "SELECT id FROM logs WHERE date = ? AND subject_id IS ?",
+                    (date, e.get("subject_id")),
+                )
+                row = cur.fetchone()
+                if row:
+                    cur.execute(
+                        "UPDATE logs SET duration_minutes = duration_minutes + ? WHERE id = ?",
+                        (minutes, row["_id"]),
+                    )
+                else:
+                    cur.execute(
+                        """INSERT INTO logs (date, subject_id, subject_name, duration_minutes, note, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)""",
+                        (date, e.get("subject_id"), e["subject_name"], minutes, e.get("note", ""), now_iso()),
+                    )
+                saved += 1
+        return saved
     def get_logs_by_date(self, date: str) -> List[Dict[str, Any]]:
         return self._fetch_all(
             """
@@ -254,19 +256,18 @@ class DatabaseManager:
         row = self._fetch_one(query, params)
         return row["total_minutes"] or 0 if row else 0
 
-    def get_current_streak(self) -> int:
+    def get_current_streak(self, today: date | None = None) -> int:
+        today = today or date.today()
+        rows = self._fetch_all(
+            "SELECT DISTINCT date FROM logs WHERE duration_minutes > 0 AND date <= ?",
+            (today.isoformat(),),
+        )
+        days = {date.fromisoformat(r["date"]) for r in rows}
+        cursor = today if today in days else today - timedelta(days=1)
         streak = 0
-        day = datetime.now()
-
-        while True:
-            date_str = day.strftime("%Y-%m-%d")
-            total = self.get_total_minutes(date_str, date_str)
-            if total and total > 0:
-                streak += 1
-                day -= timedelta(days=1)
-            else:
-                break
-
+        while cursor in days:
+            streak += 1
+            cursor -= timedelta(days=1)
         return streak
 
     def get_week_total(self) -> int:

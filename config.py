@@ -13,4 +13,3 @@ else:
 
 DB_PATH = os.path.join(BASE_DIR, "study_planner.db")
 
-MAX_SUBJECT_ROWS = 15

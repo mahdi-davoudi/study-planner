@@ -120,7 +120,9 @@ class ManageSubjectsFrame(tb.Frame):
         def save():
             new_name = entry.get().strip()
             if new_name:
-                self.db.rename_subject(doc["_id"], new_name)
+                if not self.db.rename_subject(doc["_id"], new_name):
+                    messagebox.showwarning("Error", "A subject with this name already exists.", parent=dialog)
+                    return
                 self.refresh_list()
                 if self.on_subjects_changed:
                     self.on_subjects_changed()

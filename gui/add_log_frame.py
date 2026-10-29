@@ -3,8 +3,7 @@ from ttkbootstrap.constants import *
 from tkinter import messagebox
 import tkinter as tk
 from datetime import datetime, timedelta
-
-from config import MAX_SUBJECT_ROWS
+from collections.abc import Callable
 from utils.helpers import today_str, is_valid_date, minutes_to_hm_text
 
 SPIN_MAX_MINUTES = 240  
@@ -14,6 +13,8 @@ SPIN_STEP = 5
 CELL_SIZE = 12
 CELL_GAP = 3
 CELL_RADIUS = 2
+CANVAS_HEIGHT = (CELL_SIZE + CELL_GAP) * 7 + 20
+MIN_LABEL_GAP = 28 
 
 COLOR_EMPTY = "#1c2128"        
 COLOR_LIGHT = "#2d5a3d"        
@@ -38,161 +39,235 @@ def _minutes_to_color(total_minutes: int) -> str:
 
 
 class StudyHeatmap(tb.Frame):
-    def __init__(self, parent, db, on_day_click=None):
+    """GitHub-style yearly heatmap of daily study minutes."""
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        db,
+        on_day_click: Callable[[str], None] | None = None,
+    ) -> None:
         super().__init__(parent)
         self.db = db
         self.on_day_click = on_day_click
 
-        self._tooltip = None
-        self._day_rects = {}  
+        self._tooltip: tk.Toplevel | None = None
+        self._tooltip_label: tk.Label | None = None
+        self._hover_item: int | None = None
+        self._day_rects: dict[int, tuple[str, int]] = {}  # canvas id -> (date, minutes)
 
         self.canvas = tk.Canvas(
             self,
             bg="#0d1117",
             highlightthickness=0,
-            height=(CELL_SIZE + CELL_GAP) * 7 + 20,
+            width=300,  # فقط حداقل؛ عرض واقعی را fill="x" تعیین می‌کند
+            height=CANVAS_HEIGHT,
+            xscrollincrement=CELL_SIZE + CELL_GAP,  # هر «واحد» اسکرول = یک هفته
         )
-        self.canvas.pack(fill="both", expand=True)
+        self.h_scroll = tb.Scrollbar(
+            self, orient="horizontal", command=self.canvas.xview, bootstyle="round"
+        )
+        self.canvas.configure(xscrollcommand=self.h_scroll.set)
+
+        self.canvas.pack(side="top", fill="x")
+        self.h_scroll.pack(side="top", fill="x")
 
         self.canvas.bind("<Motion>", self._on_motion)
         self.canvas.bind("<Leave>", self._hide_tooltip)
         self.canvas.bind("<Button-1>", self._on_click)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+        self.canvas.bind("<Shift-MouseWheel>", self._on_shift_wheel)
 
         self.refresh()
- 
- 
-    def refresh(self):
+
+    # ------------------------------------------------------------------
+    # Drawing
+    # ------------------------------------------------------------------
+    def refresh(self) -> None:
+        """Redraw the heatmap for the current year (Jan 1 -> today)."""
         self.canvas.delete("all")
         self._day_rects.clear()
         self._hide_tooltip()
 
         today = datetime.now().date()
-        raw_start = today.replace(month=1, day=1)
-        grid_start = raw_start - timedelta(days=raw_start.weekday())
+        jan_first = today.replace(month=1, day=1)
+        # Grid starts on the Monday of the week that contains Jan 1.
+        grid_start = jan_first - timedelta(days=jan_first.weekday())
 
         daily_totals = self.db.get_daily_totals(
-            grid_start.strftime("%Y-%m-%d"),
+            jan_first.strftime("%Y-%m-%d"),
             today.strftime("%Y-%m-%d"),
         )
 
-        total_days = (today - grid_start).days + 1
-        total_weeks = (total_days // 7) + 1
-
+        total_weeks = ((today - grid_start).days // 7) + 1
         canvas_width = 30 + total_weeks * (CELL_SIZE + CELL_GAP)
-        self.canvas.configure(scrollregion=(0, 0, canvas_width, (CELL_SIZE + CELL_GAP) * 7 + 20))
-        self.canvas.configure(width=min(canvas_width, 820))
+        self.canvas.configure(scrollregion=(0, 0, canvas_width, CANVAS_HEIGHT))
 
         # Weekday labels
         for row, label in enumerate(WEEKDAY_LABELS):
             if label:
                 self.canvas.create_text(
-                    12, 20 + row * (CELL_SIZE + CELL_GAP) + CELL_SIZE // 2,
-                    text=label, fill="#8b949e", font=("Segoe UI", 7), anchor="w"
+                    12,
+                    20 + row * (CELL_SIZE + CELL_GAP) + CELL_SIZE // 2,
+                    text=label,
+                    fill="#8b949e",
+                    font=("Segoe UI", 7),
+                    anchor="w",
                 )
 
-        last_month = None
+        last_month: int | None = None
+        last_label_x = -MIN_LABEL_GAP
         day = grid_start
         col = 0
         while day <= today:
-            row = day.weekday() 
-
-            if row == 0 and day.month != last_month:
-                last_month = day.month
-                self.canvas.create_text(
-                    30 + col * (CELL_SIZE + CELL_GAP), 8,
-                    text=day.strftime("%b"), fill="#8b949e",
-                    font=("Segoe UI", 7), anchor="w"
-                )
-
-            date_str = day.strftime("%Y-%m-%d")
-            total_minutes = daily_totals.get(date_str, 0)
-            color = _minutes_to_color(total_minutes)
-
+            row = day.weekday()
             x0 = 30 + col * (CELL_SIZE + CELL_GAP)
-            y0 = 20 + row * (CELL_SIZE + CELL_GAP)
-            x1 = x0 + CELL_SIZE
-            y1 = y0 + CELL_SIZE
 
-            is_today = (day == today)
-            outline = COLOR_TODAY_BORDER if is_today else "#0d1117"
-            width = 2 if is_today else 1
+            # Month label at the first Monday of each month. For the first
+            # column we use Jan 1 instead of the padding Monday from December,
+            # and we never draw two labels closer than MIN_LABEL_GAP pixels.
+            if row == 0:
+                label_day = max(day, jan_first)
+                if (
+                    label_day.month != last_month
+                    and x0 - last_label_x >= MIN_LABEL_GAP
+                ):
+                    last_month = label_day.month
+                    last_label_x = x0
+                    self.canvas.create_text(
+                        x0, 8,
+                        text=label_day.strftime("%b"),
+                        fill="#8b949e",
+                        font=("Segoe UI", 7),
+                        anchor="w",
+                    )
 
-            rect_id = self.canvas.create_rectangle(
-                x0, y0, x1, y1,
-                fill=color, outline=outline, width=width
-            )
-            self._day_rects[rect_id] = (date_str, total_minutes)
+            # Skip the December days that only pad the first week.
+            if day >= jan_first:
+                date_str = day.strftime("%Y-%m-%d")
+                total_minutes = daily_totals.get(date_str, 0)
+
+                y0 = 20 + row * (CELL_SIZE + CELL_GAP)
+                is_today = day == today
+                rect_id = self.canvas.create_rectangle(
+                    x0, y0, x0 + CELL_SIZE, y0 + CELL_SIZE,
+                    fill=_minutes_to_color(total_minutes),
+                    outline=COLOR_TODAY_BORDER if is_today else "#0d1117",
+                    width=2 if is_today else 1,
+                )
+                self._day_rects[rect_id] = (date_str, total_minutes)
 
             if row == 6:
                 col += 1
             day += timedelta(days=1)
 
+        # Show the most recent weeks (today) once the layout is settled.
+        self.after_idle(self._scroll_to_end)
 
-    def _on_motion(self, event):
-        item = self.canvas.find_closest(event.x, event.y)
-        if not item:
+    # ------------------------------------------------------------------
+    # Scrolling
+    # ------------------------------------------------------------------
+    def _scroll_to_end(self) -> None:
+        try:
+            self.canvas.xview_moveto(1.0)
+        except tk.TclError:  # widget destroyed before the idle callback ran
+            pass
+
+    def _on_canvas_configure(self, event: tk.Event) -> None:
+        # Window resized: keep today's end of the heatmap visible.
+        self._scroll_to_end()
+
+    def _on_shift_wheel(self, event: tk.Event) -> None:
+        self.canvas.xview_scroll(-3 if event.delta > 0 else 3, "units")
+
+    # ------------------------------------------------------------------
+    # Hit testing
+    # ------------------------------------------------------------------
+    def _item_at(self, x: int, y: int) -> int | None:
+        """Return the day-cell under the point, or None if it is in a gap."""
+        # x/y are window coordinates; convert to canvas coordinates so that
+        # hit-testing stays correct after horizontal scrolling.
+        cx = int(self.canvas.canvasx(x))
+        cy = int(self.canvas.canvasy(y))
+        for item in self.canvas.find_overlapping(cx, cy, cx, cy):
+            if item in self._day_rects:
+                return item
+        return None
+
+    # ------------------------------------------------------------------
+    # Events
+    # ------------------------------------------------------------------
+    def _on_motion(self, event: tk.Event) -> None:
+        item = self._item_at(event.x, event.y)
+        if item is None:
+            self.canvas.configure(cursor="")
             self._hide_tooltip()
             return
-        item_id = item[0]
-        if item_id not in self._day_rects:
-            self._hide_tooltip()
+
+        self.canvas.configure(cursor="hand2")
+        date_str, total_minutes = self._day_rects[item]
+        self._show_tooltip(event, date_str, total_minutes, item)
+
+    def _on_click(self, event: tk.Event) -> None:
+        item = self._item_at(event.x, event.y)
+        if item is None:
             return
+        date_str, _ = self._day_rects[item]
+        if self.on_day_click:
+            self.on_day_click(date_str)
 
-        bbox = self.canvas.bbox(item_id)
-        if not bbox or not (bbox[0] <= event.x <= bbox[2] and bbox[1] <= event.y <= bbox[3]):
-            self._hide_tooltip()
-            return
-
-        date_str, total_minutes = self._day_rects[item_id]
-        self._show_tooltip(event, date_str, total_minutes)
-
-    def _show_tooltip(self, event, date_str, total_minutes):
-        text = f"Date:\n{date_str}\n\nStudy Time:\n{minutes_to_hm_text(total_minutes)}"
-
+    # ------------------------------------------------------------------
+    # Tooltip
+    # ------------------------------------------------------------------
+    def _show_tooltip(
+        self, event: tk.Event, date_str: str, total_minutes: int, item: int
+    ) -> None:
         if self._tooltip is None:
             self._tooltip = tk.Toplevel(self)
             self._tooltip.wm_overrideredirect(True)
             self._tooltip.attributes("-topmost", True)
-            self._label = tk.Label(
-                self._tooltip, text=text, justify="left",
-                bg="#161b22", fg="#e6edf3", font=("Segoe UI", 9),
-                padx=8, pady=6, relief="solid", borderwidth=1
+            self._tooltip_label = tk.Label(
+                self._tooltip,
+                justify="left",
+                bg="#161b22",
+                fg="#e6edf3",
+                font=("Segoe UI", 9),
+                padx=8,
+                pady=6,
+                relief="solid",
+                borderwidth=1,
             )
-            self._label.pack()
-        else:
-            self._label.configure(text=text)
+            self._tooltip_label.pack()
+            self._hover_item = None
+
+        # Only rewrite the text when the hovered cell actually changed.
+        if item != self._hover_item and self._tooltip_label is not None:
+            self._hover_item = item
+            self._tooltip_label.configure(
+                text=f"Date:\n{date_str}\n\nStudy Time:\n{minutes_to_hm_text(total_minutes)}"
+            )
 
         x = self.canvas.winfo_rootx() + event.x + 16
         y = self.canvas.winfo_rooty() + event.y + 16
         self._tooltip.wm_geometry(f"+{x}+{y}")
         self._tooltip.deiconify()
 
-    def _hide_tooltip(self, event=None):
+    def _hide_tooltip(self, event: tk.Event | None = None) -> None:
+        self._hover_item = None
         if self._tooltip is not None:
             self._tooltip.withdraw()
 
-    def _on_click(self, event):
-        item = self.canvas.find_closest(event.x, event.y)
-        if not item:
-            return
-        item_id = item[0]
-        if item_id not in self._day_rects:
-            return
-        date_str, _ = self._day_rects[item_id]
-        if self.on_day_click:
-            self.on_day_click(date_str)
-
-    def destroy(self):
-        self._hide_tooltip()
+    def destroy(self) -> None:
         if self._tooltip is not None:
             self._tooltip.destroy()
+            self._tooltip = None
         super().destroy()
 
-
 class AddLogFrame(tb.Frame):
-    def __init__(self, parent, db):
+    def __init__(self, parent, db, on_logs_changed=None):
         super().__init__(parent, padding=20)
         self.db = db
+        self.on_logs_changed = on_logs_changed
         self.subject_docs = []  
         self.row_widgets = []  
         self._build_ui()
@@ -322,7 +397,7 @@ class AddLogFrame(tb.Frame):
         self.row_widgets.clear()
 
         self.subject_docs = self.db.get_subjects()
-        rows_to_show = self.subject_docs[:MAX_SUBJECT_ROWS]
+        rows_to_show = self.subject_docs
 
         if not rows_to_show:
             empty_label = tb.Label(
@@ -432,3 +507,5 @@ class AddLogFrame(tb.Frame):
             row["minutes_var"].set(0)
 
         self._refresh_all()
+        if self.on_logs_changed:
+            self.on_logs_changed()

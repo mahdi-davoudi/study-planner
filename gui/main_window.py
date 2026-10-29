@@ -53,9 +53,10 @@ class MainWindow(tb.Window):
         # Pages 
 
         self.add_log_frame = AddLogFrame(
-            self.notebook,
-            self.db
-        )
+            self.notebook, 
+            self.db, 
+            on_logs_changed=self._on_logs_changed
+        )         
 
         self.manage_subjects_frame = ManageSubjectsFrame(
             self.notebook,
@@ -98,6 +99,8 @@ class MainWindow(tb.Window):
 
     def _on_subjects_changed(self):
         self.add_log_frame.refresh_subjects()
+        self._on_logs_changed()
 
     def _on_logs_changed(self):
         self.report_frame.show_range_summary()
+        self.edit_logs_frame.refresh()

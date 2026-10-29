@@ -76,7 +76,7 @@ class EditLogsFrame(tb.Frame):
         )
         hint.grid(row=4, column=0, sticky="e", pady=(10, 0))
 
-    def load_logs(self):
+    def load_logs(self, notify_empty: bool = True) -> None:
         date_str = self.date_entry.get().strip()
         if not is_valid_date(date_str):
             messagebox.showerror("Error", "Enter the date in YYYY-MM-DD format.")
@@ -93,9 +93,10 @@ class EditLogsFrame(tb.Frame):
                 minutes_to_hm_text(log["duration_minutes"])
             ))
 
-        if not self._logs:
+        if not self._logs and notify_empty:
             messagebox.showinfo("Notice", f"No records found for {date_str}.")
-
+    def refresh(self) -> None:
+        self.load_logs(notify_empty=False)
     def _get_selected_log(self):
         selection = self.tree.selection()
         if not selection:
