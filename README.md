@@ -1,86 +1,125 @@
 # Study Planner
 
-A desktop study-tracking application built with **Tkinter** (via `ttkbootstrap`), designed to help you log study sessions per subject, visualize your progress, and review your history — with full support for Persian/Arabic (RTL) subject names.
+A desktop app for tracking how much you study each subject, built with **Python, PySide6 (Qt) and SQLite**.
+Log your daily study time, watch your progress on a GitHub-style activity heatmap, and review where your time goes with charts and statistics.
+
+Persian (RTL) subject names are fully supported.
 
 ## Features
 
-- **Add Study** — log a study session with subject, date, and duration (hours/minutes), plus a GitHub-style **activity heatmap** showing daily study intensity across the year.
-- **Subjects** — manage your subject list: add, rename, and delete subjects.
-- **Reports** — view study distribution as a **donut chart** (matplotlib), filter by date range, see per-subject percentages, and check total/day-detail summaries. Includes correct rendering of Persian/Arabic subject names using `arabic-reshaper` and `python-bidi`.
-- **Edit Logs** — browse saved records by date, edit durations inline, or delete entries.
-- Dark UI theme (`darkly`) via `ttkbootstrap`, with a responsive layout that resizes charts on window resize.
-
-## Project Structure
-
-```
-study_planner/
-├── main.py                  # Application entry point
-├── config.py                 # Paths and app-wide constants
-├── database.py                # SQLite database manager (used by default)
-├── mongodb_database.py     # MongoDB database manager (optional alternative backend)
-├── requirements.txt
-├── StudyPlanner.spec         # PyInstaller build spec
-├── gui/
-│   ├── main_window.py         # Main window / notebook tabs
-│   ├── add_log_frame.py       # Add Study tab + heatmap widget
-│   ├── manage_subjects_frame.py  # Subjects tab
-│   ├── report_frame.py        # Reports tab + donut chart
-│   └── edit_logs_frame.py     # Edit Logs tab
-├── models/
-│   └── subject.py             # Subject data model
-├── utils/
-│   └── helpers.py             # Date/time formatting helpers
-└── assets/
-    └── icons/                 # App icons
-```
+- **Add Study**: log minutes per subject for any day (up to today). Saving the same subject twice on one day adds the minutes to the existing record instead of creating a duplicate.
+- **Activity heatmap**: the whole current year at a glance. Click a day to load its date and see what you studied; hover for a tooltip; scroll sideways with the mouse wheel on small windows.
+- **Quick stats**: current streak, this week and this month. The streak keeps counting if you haven't studied *yet* today.
+- **Subjects**: add, rename and delete subjects. Renaming also updates your past records, so history is never split in two.
+- **Reports**: donut chart, per-subject table and summary statistics for any date range, with presets (Today, 7 days, 30 days, This month, This year, All time).
+- **Edit Logs**: browse a day's records, change their duration or delete them.
+- **Dark theme**, consistent across all pages.
 
 ## Requirements
 
-- Python 3.9+
-- Dependencies listed in `requirements.txt`:
-  - `matplotlib>=3.8`
-  - `arabic-reshaper>=3.0`
-  - `python-bidi>=0.6`
-- `ttkbootstrap` (GUI toolkit)
-- SQLite is used via Python's built-in `sqlite3` module — no separate database server needed.
-- `pymongo` is only required if you switch to the optional MongoDB backend (see `mongodb_database.py`).
+- Python 3.10 or newer (developed on 3.12 and 3.14)
+- [PySide6](https://pypi.org/project/PySide6/) (the only dependency)
 
 ## Installation
 
 ```bash
-git clone <repository-url>
+# 1. Clone or download the project, then enter its folder
 cd study_planner
+
+# 2. Create and activate a virtual environment
 python -m venv venv
-source venv/bin/activate   # on Windows: venv\Scripts\activate
+venv\Scripts\activate          # Windows
+source venv/bin/activate       # Linux / macOS
+
+# 3. Install the dependency
 pip install -r requirements.txt
 ```
 
-## Usage
+## Run
 
 ```bash
 python main.py
 ```
 
-On first launch, a local SQLite database (`study_planner.db`) is created automatically in the project directory to store subjects and study logs. No separate database server setup is required.
+The database file `study_planner.db` is created automatically on the first run.
 
-> **Note:** The project also includes `mongodb_database.py`, an alternative `DatabaseManager` implementation backed by MongoDB, kept for reference/future use. It is **not** used by default — `main.py` imports from `database.py` (SQLite).
+## Usage tips
 
-## Building a Standalone Executable
+| Action | How |
+|---|---|
+| Save the log | Click **Save Study Log** or press `Ctrl+Enter` |
+| See what you studied on a day | Click that day on the heatmap |
+| Scroll the heatmap sideways | Mouse wheel over the heatmap, or drag its scrollbar |
+| Rename a subject | Double-click it on the **Subjects** page |
+| Edit a saved record | Double-click it on the **Edit Logs** page |
 
-The project includes a `StudyPlanner.spec` file for packaging with [PyInstaller](https://pyinstaller.org/):
+Heatmap colours: no study, up to 30 min, up to 90 min, up to 3 h, more than 3 h.
+
+## Tests
+
+```bash
+pip install pytest
+pytest
+```
+
+The tests cover the database layer (streaks, renaming, merging records, percentages) and use an in-memory SQLite database, so they never touch your real data.
+
+## Build a Windows executable
 
 ```bash
 pip install pyinstaller
-pyinstaller StudyPlanner.spec
+pyinstaller --clean StudyPlanner.spec
 ```
 
-The built executable will be placed in the `dist/` folder.
+The result is `dist/StudyPlanner.exe` (a single file, no console window). The database is stored **next to the executable**, so keep `study_planner.db` in the same folder as the `.exe` if you move it.
 
-## Notes
+## Data and backup
 
-- Persian/Arabic text shaping for chart legends is handled via `arabic_reshaper` + `python-bidi`, since matplotlib does not perform RTL shaping natively.
-- The heatmap and donut chart are rebuilt dynamically when subjects or logs change, keeping all tabs in sync.
+All data lives in one SQLite file, `study_planner.db`:
+
+- When running from source, it is in the project folder.
+- When running the built `.exe`, it is next to the executable.
+
+To back up your data, copy that file while the app is closed. To move to another computer, copy it next to the app there.
+
+> If your project folder is synced by OneDrive, Dropbox or Google Drive, close the app before syncing, or keep the database outside the synced folder. Cloud sync can conflict with a database file that is being written.
+
+## Project structure
+
+```
+study_planner/
+├── main.py                  # entry point
+├── config.py                # paths and constants (DB location, input limits)
+├── database.py              # SQLite layer: subjects, logs, reports, streak
+├── requirements.txt
+├── StudyPlanner.spec        # PyInstaller build configuration
+├── assets/
+│   └── icons/icon.ico
+├── utils/
+│   └── helpers.py           # time formatting helpers
+├── gui/
+│   ├── main_window.py       # sidebar navigation + pages
+│   ├── theme.py             # dark palette and stylesheet
+│   ├── widgets.py           # shared widgets (cards, stat cards, ...)
+│   ├── heatmap.py           # yearly activity heatmap
+│   ├── donut.py             # donut chart
+│   ├── add_log_page.py      # "Add Study" page
+│   ├── subjects_page.py     # "Subjects" page
+│   ├── report_page.py       # "Reports" page
+│   └── edit_logs_page.py    # "Edit Logs" page
+└── tests/
+    └── test_database.py
+```
+
+`database.py` and `utils/` have no GUI dependencies, so the logic can be tested and reused independently of the interface.
+
+## Troubleshooting
+
+- **`ModuleNotFoundError: PySide6`**: the virtual environment is not active, or `pip install -r requirements.txt` was not run.
+- **No PySide6 wheel for your Python version**: create the virtual environment with Python 3.12 or 3.13.
+- **The `.exe` closes immediately**: in `StudyPlanner.spec` set `console=True`, rebuild, and run the exe from a terminal to see the error.
+- **Access denied while building**: close the running `StudyPlanner.exe` (and let cloud sync finish) before running PyInstaller.
 
 ## License
 
-Add your preferred license here (e.g., MIT).
+Add your license here.

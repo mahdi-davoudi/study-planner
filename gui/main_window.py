@@ -1,106 +1,101 @@
-import ttkbootstrap as tb
-from gui.add_log_frame import AddLogFrame
-from gui.manage_subjects_frame import ManageSubjectsFrame
-from gui.report_frame import ReportFrame
-from gui.edit_logs_frame import EditLogsFrame
+"""Main window: sidebar navigation + stacked pages."""
 
-DARK_THEME = "darkly"
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QMainWindow,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+from config import APP_NAME, ICON_PATH
+from gui.add_log_page import AddLogPage
+from gui.edit_logs_page import EditLogsPage
+from gui.report_page import ReportPage
+from gui.subjects_page import SubjectsPage
+
+if TYPE_CHECKING:
+    from database import DatabaseManager
 
 
-class MainWindow(tb.Window):
-    def __init__(self, db):
-        super().__init__(themename=DARK_THEME)
-
+class MainWindow(QMainWindow):
+    def __init__(self, db: DatabaseManager) -> None:
+        super().__init__()
         self.db = db
+        self.setWindowTitle(APP_NAME)
+        self.resize(1180, 720)
+        self.setMinimumSize(980, 640)
+        if ICON_PATH.exists():
+            self.setWindowIcon(QIcon(str(ICON_PATH)))
 
-        self.title("Study Planner")
-
-        window_width = 1100
-        window_height = 700
-
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-
-        x = (screen_width - window_width) // 2
-        y = (screen_height - window_height) // 2
-
-        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
-        self.minsize(900, 600)
-
-        try:
-            self.iconbitmap("assets/icons/icon.ico")
-        except Exception:
-            pass
+        self.add_page = AddLogPage(db)
+        self.subjects_page = SubjectsPage(db)
+        self.report_page = ReportPage(db)
+        self.edit_page = EditLogsPage(db)
+        self._pages: list[tuple[str, QWidget]] = [
+            ("Add Study", self.add_page),
+            ("Subjects", self.subjects_page),
+            ("Reports", self.report_page),
+            ("Edit Logs", self.edit_page),
+        ]
 
         self._build_ui()
-        self.focus_force()
+        self._connect_signals()
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
+        central = QWidget()
+        central.setObjectName("root")
+        layout = QHBoxLayout(central)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # Main Notebook
-        self.notebook = tb.Notebook(
-            self,
-            bootstyle="dark"
-        )
+        sidebar = QWidget()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(220)
+        side_layout = QVBoxLayout(sidebar)
+        side_layout.setContentsMargins(12, 18, 12, 12)
+        brand = QLabel(APP_NAME)
+        brand.setObjectName("brand")
+        sub = QLabel("Track · Review · Improve")
+        sub.setObjectName("brandSub")
+        self.nav = QListWidget()
+        self.nav.setObjectName("nav")
+        self.nav.addItems([title for title, _page in self._pages])
+        side_layout.addWidget(brand)
+        side_layout.addWidget(sub)
+        side_layout.addWidget(self.nav, 1)
 
-        self.notebook.pack(
-            fill="both",
-            expand=True,
-            padx=18,
-            pady=18
-        )
+        self.stack = QStackedWidget()
+        for _title, page in self._pages:
+            self.stack.addWidget(page)
 
-        # Pages 
+        layout.addWidget(sidebar)
+        layout.addWidget(self.stack, 1)
+        self.setCentralWidget(central)
 
-        self.add_log_frame = AddLogFrame(
-            self.notebook, 
-            self.db, 
-            on_logs_changed=self._on_logs_changed
-        )         
+        self.nav.currentRowChanged.connect(self._on_nav_changed)
+        self.nav.setCurrentRow(0)
 
-        self.manage_subjects_frame = ManageSubjectsFrame(
-            self.notebook,
-            self.db,
-            on_subjects_changed=self._on_subjects_changed
-        )
+    def _connect_signals(self) -> None:
+        self.add_page.logsChanged.connect(self.report_page.refresh)
+        self.add_page.logsChanged.connect(self.edit_page.refresh)
+        self.edit_page.logsChanged.connect(self.add_page.refresh)
+        self.edit_page.logsChanged.connect(self.report_page.refresh)
+        self.subjects_page.subjectsChanged.connect(self.add_page.refresh_subjects)
+        self.subjects_page.subjectsChanged.connect(self.report_page.refresh)
+        self.subjects_page.subjectsChanged.connect(self.edit_page.refresh)
 
-        self.report_frame = ReportFrame(
-            self.notebook,
-            self.db
-        )
-
-        self.edit_logs_frame = EditLogsFrame(
-            self.notebook,
-            self.db,
-            on_logs_changed=self._on_logs_changed
-        )
-
-        self.notebook.add(
-            self.add_log_frame,
-            text="📝 Add Study"
-        )
-
-        self.notebook.add(
-            self.manage_subjects_frame,
-            text="📚 Subjects"
-        )
-
-        self.notebook.add(
-            self.report_frame,
-            text="📊 Reports"
-        )
-
-        self.notebook.add(
-            self.edit_logs_frame,
-            text="✏ Edit Logs"
-        )
-
-        self.notebook.select(0)
-
-    def _on_subjects_changed(self):
-        self.add_log_frame.refresh_subjects()
-        self._on_logs_changed()
-
-    def _on_logs_changed(self):
-        self.report_frame.show_range_summary()
-        self.edit_logs_frame.refresh()
+    def _on_nav_changed(self, row: int) -> None:
+        if row < 0:
+            return
+        self.stack.setCurrentIndex(row)
+        # Pages may be stale (e.g. the date changed while the app stayed open).
+        page = self._pages[row][1]
+        page.refresh()  # type: ignore[attr-defined]
