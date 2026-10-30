@@ -50,6 +50,11 @@ QListWidget#nav::item {{
 }}
 QListWidget#nav::item:hover:!selected {{ background: {CARD}; color: {TEXT}; }}
 QListWidget#nav::item:selected {{ background: rgba(47,129,247,0.18); color: {TEXT}; }}
+QToolButton#langBtn {{
+    background: transparent; border: 1px solid {BORDER}; border-radius: 8px;
+    padding: 4px 8px; color: {MUTED}; font-weight: 600;
+}}
+QToolButton#langBtn:hover {{ background: {CARD}; color: {TEXT}; }}
 
 /* ---- Typography ---- */
 QLabel {{ background: transparent; }}

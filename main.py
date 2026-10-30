@@ -1,15 +1,11 @@
-"""Study Planner - application entry point."""
-
 from __future__ import annotations
-
 import sys
-
 from PySide6.QtWidgets import QApplication, QMessageBox
-
 from config import APP_NAME
 from database import DatabaseManager
 from gui.main_window import MainWindow
 from gui.theme import apply_theme
+from i18n import manager
 
 
 def main() -> int:
@@ -25,6 +21,7 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
+    manager.apply()  # layout direction (LTR/RTL) + Qt's own translations
     apply_theme(app)
 
     try:

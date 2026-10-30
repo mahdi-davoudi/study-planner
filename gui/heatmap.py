@@ -1,29 +1,25 @@
-"""GitHub-style yearly activity heatmap, painted with QPainter."""
-
 from __future__ import annotations
-
 from datetime import date, timedelta
-
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QFrame, QScrollArea, QToolTip, QWidget
-
 from gui import theme
+from i18n import format_date, month_name, tr
 from utils.helpers import minutes_to_hm_text
 
 CELL = 12
 GAP = 3
 STEP = CELL + GAP
-LEFT = 38          # room for the weekday labels
-TOP = 22           # room for the month labels
-FOOTER = 26        # room for the legend
+LEFT = 38            # room for the weekday labels
+TOP = 22             # room for the month labels
+FOOTER = 26          # room for the legend
 RIGHT_PAD = 8
-MIN_LABEL_GAP = 30  # minimum horizontal distance between two month labels
+MIN_LABEL_GAP = 30   # minimum horizontal distance between two month labels
 MIN_WIDTH = 220
+MONTH_LABEL_WIDTH = 64  # Persian month names are longer than "Jan"
 
 
 def level_color(minutes: int) -> QColor:
-    """Map a day's total minutes to one of the five heatmap colours."""
     if minutes <= 0:
         idx = 0
     elif minutes <= 30:
@@ -38,8 +34,6 @@ def level_color(minutes: int) -> QColor:
 
 
 class HeatmapWidget(QWidget):
-    """Draws Jan 1 -> today as a grid of weeks (columns) x weekdays (rows)."""
-
     dayClicked = Signal(str)  # ISO date, e.g. "2026-10-25"
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -50,14 +44,12 @@ class HeatmapWidget(QWidget):
         self._hover: date | None = None
         self.set_data({}, date.today())
 
-    # ------------------------------------------------------------------
     # Data
-    # ------------------------------------------------------------------
     def set_data(self, totals: dict[str, int], today: date | None = None) -> None:
         self._totals = totals
         self._today = today or date.today()
         self._jan1 = self._today.replace(month=1, day=1)
-        # The grid starts on the Monday of the week that contains Jan 1.
+        # The grid starts on the Monday of the week that contains Jan 1
         self._grid_start = self._jan1 - timedelta(days=self._jan1.weekday())
         self._weeks = (self._today - self._grid_start).days // 7 + 1
         width = max(MIN_WIDTH, LEFT + self._weeks * STEP + RIGHT_PAD)
@@ -68,16 +60,13 @@ class HeatmapWidget(QWidget):
         self._selected = day
         self.update()
 
-    # ------------------------------------------------------------------
     # Geometry helpers
-    # ------------------------------------------------------------------
     def _cell_rect(self, day: date) -> QRectF:
         offset = (day - self._grid_start).days
         col, row = divmod(offset, 7)
         return QRectF(LEFT + col * STEP, TOP + row * STEP, CELL, CELL)
 
     def _day_at(self, pos: QPointF) -> date | None:
-        """The day under the mouse, or None when over a gap/outside the grid."""
         x, y = pos.x() - LEFT, pos.y() - TOP
         if x < 0 or y < 0:
             return None
@@ -90,12 +79,12 @@ class HeatmapWidget(QWidget):
             return None
         return day
 
-    # ------------------------------------------------------------------
     # Painting
-    # ------------------------------------------------------------------
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # Absolute left/right alignment, even when the app is right-to-left.
+        painter.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
 
         small = QFont(self.font())
         small.setPointSizeF(8)
@@ -103,11 +92,11 @@ class HeatmapWidget(QWidget):
         painter.setPen(QColor(theme.MUTED))
 
         # Weekday labels
-        for row, label in ((0, "Mon"), (2, "Wed"), (4, "Fri")):
+        for row, key in ((0, "wd.mon"), (2, "wd.wed"), (4, "wd.fri")):
             painter.drawText(
                 QRectF(0, TOP + row * STEP, LEFT - 8, CELL),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                label,
+                tr(key),
             )
 
         # Month labels: one per month, never closer than MIN_LABEL_GAP pixels.
@@ -121,9 +110,9 @@ class HeatmapWidget(QWidget):
             if label_day.month != last_month and x - last_x >= MIN_LABEL_GAP:
                 last_month, last_x = label_day.month, x
                 painter.drawText(
-                    QRectF(x, 0, 40, TOP - 6),
+                    QRectF(x, 0, MONTH_LABEL_WIDTH, TOP - 6),
                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                    label_day.strftime("%b"),
+                    month_name(label_day.month),
                 )
 
         # Day cells
@@ -149,7 +138,7 @@ class HeatmapWidget(QWidget):
 
     def _paint_legend(self, painter: QPainter) -> None:
         metrics = painter.fontMetrics()
-        less, more = "Less", "More"
+        less, more = tr("heat.less"), tr("heat.more")
         square, spacing = CELL - 2, 4
         total = (
             metrics.horizontalAdvance(less) + 6
@@ -176,9 +165,7 @@ class HeatmapWidget(QWidget):
             Qt.AlignmentFlag.AlignVCenter, more,
         )
 
-    # ------------------------------------------------------------------
     # Mouse
-    # ------------------------------------------------------------------
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         day = self._day_at(event.position())
         if day != self._hover:
@@ -192,7 +179,7 @@ class HeatmapWidget(QWidget):
         minutes = self._totals.get(day.isoformat(), 0)
         QToolTip.showText(
             event.globalPosition().toPoint(),
-            f"{day.strftime('%a, %d %b %Y')}\nStudy time: {minutes_to_hm_text(minutes)}",
+            f"{format_date(day)}\n{tr('heat.tooltip', time=minutes_to_hm_text(minutes))}",
             self,
         )
 
@@ -212,12 +199,7 @@ class HeatmapWidget(QWidget):
 
 
 class HeatmapView(QScrollArea):
-    """Horizontal scroll container for the heatmap.
-
-    Always opens scrolled to the right edge so the most recent weeks (today)
-    are visible, and lets the mouse wheel scroll sideways.
-    """
-
+  
     def __init__(self, heatmap: HeatmapWidget, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.heatmap = heatmap

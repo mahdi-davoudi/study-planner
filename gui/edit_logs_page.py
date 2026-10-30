@@ -1,9 +1,5 @@
-"""'Edit Logs' page: browse, edit and delete the records of one day."""
-
 from __future__ import annotations
-
 from typing import TYPE_CHECKING
-
 from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -11,7 +7,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
-    QLabel,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -22,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from config import DATE_FORMAT, SPIN_MAX_MINUTES, SPIN_STEP
 from gui.widgets import Card, muted_label, page_title
+from i18n import manager, tr
 from utils.helpers import minutes_to_hm_text
 
 if TYPE_CHECKING:
@@ -43,18 +39,21 @@ class EditLogsPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 24)
         root.setSpacing(16)
-        root.addWidget(page_title("Edit / Delete Saved Records"))
+        root.addWidget(page_title(tr("edit.title")))
 
-        controls = Card("Day")
+        controls = Card(tr("edit.day_card"))
         row = QHBoxLayout()
         row.setSpacing(8)
-        prev_btn = QPushButton("‹")
+        # In a right-to-left layout the first widget sits on the right, so the
+        # arrows must point the other way to keep "previous/next" intuitive.
+        rtl = manager.is_rtl
+        prev_btn = QPushButton("›" if rtl else "‹")
         prev_btn.setFixedWidth(40)
         prev_btn.clicked.connect(lambda: self._shift_day(-1))
-        next_btn = QPushButton("›")
+        next_btn = QPushButton("‹" if rtl else "›")
         next_btn.setFixedWidth(40)
         next_btn.clicked.connect(lambda: self._shift_day(1))
-        today_btn = QPushButton("Today")
+        today_btn = QPushButton(tr("common.today"))
         today_btn.clicked.connect(lambda: self.date_edit.setDate(QDate.currentDate()))
 
         self.date_edit = QDateEdit(QDate.currentDate())
@@ -70,9 +69,9 @@ class EditLogsPage(QWidget):
         controls.add_layout(row)
         root.addWidget(controls)
 
-        table_card = Card("Records for selected day")
+        table_card = Card(tr("edit.records_card"))
         self.table = QTableWidget(0, 2)
-        self.table.setHorizontalHeaderLabels(["Subject", "Study time"])
+        self.table.setHorizontalHeaderLabels([tr("rep.col_subject"), tr("rep.col_time")])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -86,17 +85,17 @@ class EditLogsPage(QWidget):
         self.table.itemSelectionChanged.connect(self._update_buttons)
         table_card.add(self.table, 1)
 
-        self.empty_label = muted_label("No records for this day.")
+        self.empty_label = muted_label(tr("edit.empty"))
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         table_card.add(self.empty_label)
 
         actions = QHBoxLayout()
-        actions.addWidget(muted_label("Tip: double-click a row to edit it.", wrap=False))
+        actions.addWidget(muted_label(tr("edit.tip"), wrap=False))
         actions.addStretch(1)
-        self.edit_btn = QPushButton("Edit Time")
+        self.edit_btn = QPushButton(tr("edit.edit_btn"))
         self.edit_btn.setObjectName("warning")
         self.edit_btn.clicked.connect(self.edit_selected)
-        self.delete_btn = QPushButton("Delete Selected Record")
+        self.delete_btn = QPushButton(tr("edit.delete_btn"))
         self.delete_btn.setObjectName("danger")
         self.delete_btn.clicked.connect(self.delete_selected)
         actions.addWidget(self.edit_btn)
@@ -137,16 +136,18 @@ class EditLogsPage(QWidget):
             return self._logs[row]
         return None
 
-    # ------------------------------------------------------------------
     def delete_selected(self) -> None:
         log = self._selected_log()
         if log is None:
             return
         answer = QMessageBox.question(
             self,
-            "Confirm Delete",
-            f"Delete the record '{log['subject_name']} - "
-            f"{minutes_to_hm_text(log['duration_minutes'])}'?",
+            tr("common.confirm_delete"),
+            tr(
+                "edit.delete_q",
+                name=log["subject_name"],
+                time=minutes_to_hm_text(log["duration_minutes"]),
+            ),
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
@@ -160,8 +161,8 @@ class EditLogsPage(QWidget):
             return
         minutes, ok = QInputDialog.getInt(
             self,
-            "Edit Study Time",
-            f"{log['subject_name']} (minutes):",
+            tr("edit.dialog_title"),
+            tr("edit.minutes_prompt", name=log["subject_name"]),
             int(log["duration_minutes"]),
             1,
             SPIN_MAX_MINUTES,

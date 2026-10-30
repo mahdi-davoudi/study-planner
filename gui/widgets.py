@@ -1,11 +1,7 @@
-"""Small reusable widgets shared by all pages."""
-
 from __future__ import annotations
-
 import unicodedata
-
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtCore import Qt, QRectF, QPointF
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QPen
 from PySide6.QtWidgets import (
     QFrame,
     QLabel,
@@ -66,6 +62,19 @@ def swatch_icon(color: str | QColor, size: int = 12) -> QIcon:
     painter.end()
     return QIcon(pixmap)
 
+def globe_icon(color: str, size: int = 18) -> QIcon:
+    """Simple globe icon (circle + meridian + equator) drawn with QPainter."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pixmap)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(QColor(color), 1.4))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(QRectF(1.5, 1.5, size - 3, size - 3))
+    p.drawEllipse(QRectF(size * 0.33, 1.5, size * 0.34, size - 3))
+    p.drawLine(QPointF(1.5, size / 2), QPointF(size - 1.5, size / 2))
+    p.end()
+    return QIcon(pixmap)
 
 class Card(QFrame):
     """Rounded panel with an optional title and a vertical body layout."""

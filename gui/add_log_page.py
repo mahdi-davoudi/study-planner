@@ -1,10 +1,6 @@
-"""'Add Study' page: stats, activity heatmap and the daily log form."""
-
 from __future__ import annotations
-
 from datetime import date
 from typing import TYPE_CHECKING
-
 from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (
     QDateEdit,
@@ -27,6 +23,7 @@ from gui.widgets import (
     page_title,
     scrollable,
 )
+from i18n import tr, tr_n
 from utils.helpers import minutes_to_hm_text
 
 if TYPE_CHECKING:
@@ -34,7 +31,6 @@ if TYPE_CHECKING:
 
 
 class AddLogPage(QWidget):
-    """Log today's study time per subject and browse the yearly activity."""
 
     logsChanged = Signal()
 
@@ -46,9 +42,7 @@ class AddLogPage(QWidget):
         self.refresh_subjects()
         self.refresh()
 
-    # ------------------------------------------------------------------
     # UI
-    # ------------------------------------------------------------------
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 24)
@@ -57,20 +51,23 @@ class AddLogPage(QWidget):
         # Header: title on the left, quick stats on the right.
         header = QHBoxLayout()
         header.setSpacing(12)
-        header.addWidget(page_title("Add Study Log"))
+        header.addWidget(page_title(tr("add.title")))
         header.addStretch(1)
-        self.streak_card = StatCard("Streak", theme.ORANGE)
-        self.week_card = StatCard("This week", theme.ACCENT)
-        self.month_card = StatCard("This month", theme.SUCCESS)
+        self.streak_card = StatCard(tr("stat.streak"), theme.ORANGE)
+        self.week_card = StatCard(tr("stat.week"), theme.ACCENT)
+        self.month_card = StatCard(tr("stat.month"), theme.SUCCESS)
         for card in (self.streak_card, self.week_card, self.month_card):
             card.setFixedWidth(150)
             header.addWidget(card)
         root.addLayout(header)
 
         # Full-width heatmap so the whole year is visible on a normal window.
-        self.heatmap_card = Card("Study Activity")
+        self.heatmap_card = Card(tr("add.activity"))
         self.heatmap = HeatmapWidget()
         self.heatmap_view = HeatmapView(self.heatmap)
+        # The heatmap is painted with absolute coordinates: keep it left-to-right
+        # even when the rest of the UI is right-to-left (Persian).
+        self.heatmap_view.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         self.heatmap.dayClicked.connect(self._on_day_clicked)
         self.heatmap_card.add(self.heatmap_view)
         root.addWidget(self.heatmap_card)
@@ -79,10 +76,8 @@ class AddLogPage(QWidget):
         body.setSpacing(16)
         root.addLayout(body, 1)
 
-        self.details_card = Card("Day details")
-        self.details_label = QLabel(
-            "Click a day on the heatmap to load its date and see what was studied."
-        )
+        self.details_card = Card(tr("add.details"))
+        self.details_label = QLabel(tr("add.details_hint"))
         self.details_label.setTextFormat(Qt.TextFormat.PlainText)
         self.details_label.setWordWrap(True)
         self.details_label.setAlignment(
@@ -96,10 +91,10 @@ class AddLogPage(QWidget):
         self._build_right(right)
 
     def _build_right(self, right: QVBoxLayout) -> None:
-        card = Card("Log study time")
+        card = Card(tr("add.log_card"))
 
         date_row = QHBoxLayout()
-        date_row.addWidget(QLabel("Date"))
+        date_row.addWidget(QLabel(tr("common.date")))
         date_row.addStretch(1)
         self.date_edit = QDateEdit(QDate.currentDate())
         self.date_edit.setCalendarPopup(True)
@@ -115,7 +110,7 @@ class AddLogPage(QWidget):
         self._rows_layout.setSpacing(6)
         card.add(scrollable(self._rows_container), 1)
 
-        self.save_btn = QPushButton("Save Study Log")
+        self.save_btn = QPushButton(tr("add.save"))
         self.save_btn.setObjectName("primary")
         self.save_btn.setShortcut("Ctrl+Return")
         self.save_btn.clicked.connect(self.submit)
@@ -127,9 +122,7 @@ class AddLogPage(QWidget):
 
         right.addWidget(card, 1)
 
-    # ------------------------------------------------------------------
     # Subjects form
-    # ------------------------------------------------------------------
     def refresh_subjects(self) -> None:
         """Rebuild the subject rows, keeping minutes already typed in."""
         previous = {sid: spin.value() for sid, spin in self._spins.items()}
@@ -145,9 +138,7 @@ class AddLogPage(QWidget):
         self.save_btn.setEnabled(bool(subjects))
 
         if not subjects:
-            self._rows_layout.addWidget(
-                muted_label("No subjects yet. Add some from the Subjects page first.")
-            )
+            self._rows_layout.addWidget(muted_label(tr("add.no_subjects")))
             self._rows_layout.addStretch(1)
             return
 
@@ -165,7 +156,7 @@ class AddLogPage(QWidget):
             spin = NoWheelSpinBox()
             spin.setRange(0, SPIN_MAX_MINUTES)
             spin.setSingleStep(SPIN_STEP)
-            spin.setSuffix(" min")
+            spin.setSuffix(tr("add.min_suffix"))
             spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
             spin.setFixedWidth(120)
             spin.setValue(previous.get(subject["_id"], 0))
@@ -175,22 +166,20 @@ class AddLogPage(QWidget):
             self._rows_layout.addWidget(row)
         self._rows_layout.addStretch(1)
 
-    # ------------------------------------------------------------------
     # Stats / heatmap
-    # ------------------------------------------------------------------
     def refresh(self) -> None:
         today = date.today()
         self.date_edit.setMaximumDate(QDate.currentDate())
 
         streak = self.db.get_current_streak()
-        self.streak_card.set_value(f"{streak} day{'s' if streak != 1 else ''}")
+        self.streak_card.set_value(tr_n("streak", streak))
         self.week_card.set_value(minutes_to_hm_text(self.db.get_week_total()))
         self.month_card.set_value(minutes_to_hm_text(self.db.get_month_total()))
 
         jan1 = today.replace(month=1, day=1)
         totals = self.db.get_daily_totals(jan1.isoformat(), today.isoformat())
         self.heatmap.set_data(totals, today)
-        self.heatmap_card.set_title(f"Study Activity ({today.year})")
+        self.heatmap_card.set_title(tr("add.activity_year", year=today.year))
         self.heatmap_view.scroll_to_end_later()
 
         # Keep the details panel in sync with the date currently selected.
@@ -203,21 +192,19 @@ class AddLogPage(QWidget):
 
     def _show_day_details(self, iso: str) -> None:
         logs = self.db.get_logs_by_date(iso)
-        self.details_card.set_title(f"Day details - {iso}")
+        self.details_card.set_title(tr("add.day_title", iso=iso))
         if not logs:
-            self.details_label.setText("No study records for this day.")
+            self.details_label.setText(tr("add.no_records"))
             return
         lines = [
-            f"•  {log['subject_name']}: {minutes_to_hm_text(log['duration_minutes'])}"
+            f"• {log['subject_name']}: {minutes_to_hm_text(log['duration_minutes'])}"
             for log in logs
         ]
         total = sum(log["duration_minutes"] for log in logs)
-        lines.append(f"\nTotal: {minutes_to_hm_text(total)}")
+        lines.append(f"\n{tr('common.total')}: {minutes_to_hm_text(total)}")
         self.details_label.setText("\n".join(lines))
 
-    # ------------------------------------------------------------------
     # Saving
-    # ------------------------------------------------------------------
     def submit(self) -> None:
         subjects = {s["_id"]: s["name"] for s in self.db.get_subjects()}
         entries = [
@@ -230,7 +217,7 @@ class AddLogPage(QWidget):
             if spin.value() > 0 and sid in subjects
         ]
         if not entries:
-            self._set_status("Enter minutes for at least one subject.", theme.WARNING)
+            self._set_status(tr("add.need_minutes"), theme.WARNING)
             return
 
         iso = self.date_edit.date().toString("yyyy-MM-dd")
@@ -241,8 +228,7 @@ class AddLogPage(QWidget):
             spin.setValue(0)
 
         self._set_status(
-            f"Saved {count} subject{'s' if count != 1 else ''} for {iso} "
-            f"(total {minutes_to_hm_text(total)}).",
+            tr_n("add.saved", count, iso=iso, total=minutes_to_hm_text(total)),
             theme.SUCCESS,
         )
         self.heatmap.set_selected(date.fromisoformat(iso))

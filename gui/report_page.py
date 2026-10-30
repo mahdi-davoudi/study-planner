@@ -1,10 +1,6 @@
-"""'Reports' page: donut chart, per-subject table and summary statistics."""
-
 from __future__ import annotations
-
 from datetime import date, timedelta
 from typing import TYPE_CHECKING
-
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -24,6 +20,7 @@ from config import DATE_FORMAT
 from gui import theme
 from gui.donut import DonutChart
 from gui.widgets import Card, StatCard, muted_label, page_title, swatch_icon
+from i18n import localize_digits, tr
 from utils.helpers import minutes_to_hm_text
 
 if TYPE_CHECKING:
@@ -43,36 +40,34 @@ class ReportPage(QWidget):
         today = date.today()
         self._set_range(today.replace(day=1), today)
 
-    # ------------------------------------------------------------------
     # UI
-    # ------------------------------------------------------------------
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 24)
         root.setSpacing(16)
-        root.addWidget(page_title("Study Report"))
+        root.addWidget(page_title(tr("rep.title")))
 
         # --- Date range ---
-        range_card = Card("Date range")
+        range_card = Card(tr("rep.range_card"))
         row = QHBoxLayout()
         row.setSpacing(8)
         self.from_edit = self._make_date_edit()
         self.to_edit = self._make_date_edit()
-        row.addWidget(QLabel("From"))
+        row.addWidget(QLabel(tr("common.from")))
         row.addWidget(self.from_edit)
         row.addSpacing(8)
-        row.addWidget(QLabel("To"))
+        row.addWidget(QLabel(tr("common.to")))
         row.addWidget(self.to_edit)
         row.addStretch(1)
 
         today = date.today()
         presets = (
-            ("Today", lambda: self._set_range(date.today(), date.today())),
-            ("7 days", lambda: self._set_range(date.today() - timedelta(days=6), date.today())),
-            ("30 days", lambda: self._set_range(date.today() - timedelta(days=29), date.today())),
-            ("This month", lambda: self._set_range(date.today().replace(day=1), date.today())),
-            ("This year", lambda: self._set_range(today.replace(month=1, day=1), date.today())),
-            ("All time", lambda: self._set_range(None, None)),
+            (tr("common.today"), lambda: self._set_range(date.today(), date.today())),
+            (tr("preset.7"), lambda: self._set_range(date.today() - timedelta(days=6), date.today())),
+            (tr("preset.30"), lambda: self._set_range(date.today() - timedelta(days=29), date.today())),
+            (tr("stat.month"), lambda: self._set_range(date.today().replace(day=1), date.today())),
+            (tr("preset.year"), lambda: self._set_range(today.replace(month=1, day=1), date.today())),
+            (tr("preset.all"), lambda: self._set_range(None, None)),
         )
         for text, handler in presets:
             button = QPushButton(text)
@@ -88,14 +83,16 @@ class ReportPage(QWidget):
         middle = QHBoxLayout()
         middle.setSpacing(16)
 
-        chart_card = Card("Study distribution")
+        chart_card = Card(tr("rep.distribution"))
         self.donut = DonutChart()
         chart_card.add(self.donut, 1)
         middle.addWidget(chart_card, 5)
 
-        table_card = Card("Results")
+        table_card = Card(tr("rep.results"))
         self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["Subject", "Study time", "Share"])
+        self.table.setHorizontalHeaderLabels(
+            [tr("rep.col_subject"), tr("rep.col_time"), tr("rep.col_share")]
+        )
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.table.setAlternatingRowColors(True)
@@ -112,10 +109,10 @@ class ReportPage(QWidget):
         # --- Statistics ---
         stats = QHBoxLayout()
         stats.setSpacing(12)
-        self.total_card = StatCard("Total", theme.SUCCESS)
-        self.average_card = StatCard("Average per subject", theme.ACCENT)
-        self.most_card = StatCard("Most studied", theme.ORANGE, small=True)
-        self.least_card = StatCard("Least studied", theme.MUTED, small=True)
+        self.total_card = StatCard(tr("common.total"), theme.SUCCESS)
+        self.average_card = StatCard(tr("rep.average"), theme.ACCENT)
+        self.most_card = StatCard(tr("rep.most"), theme.ORANGE, small=True)
+        self.least_card = StatCard(tr("rep.least"), theme.MUTED, small=True)
         for card in (self.total_card, self.average_card, self.most_card, self.least_card):
             stats.addWidget(card, 1)
         root.addLayout(stats)
@@ -129,9 +126,7 @@ class ReportPage(QWidget):
         edit.dateChanged.connect(self._on_date_edited)
         return edit
 
-    # ------------------------------------------------------------------
     # Range handling
-    # ------------------------------------------------------------------
     def _set_range(self, start: date | None, end: date | None) -> None:
         """Apply a preset. ``None, None`` means all time."""
         self._all_time = start is None or end is None
@@ -153,21 +148,19 @@ class ReportPage(QWidget):
             other.blockSignals(False)
         self.refresh()
 
-    # ------------------------------------------------------------------
     # Data
-    # ------------------------------------------------------------------
     def refresh(self) -> None:
         for edit in (self.from_edit, self.to_edit):
             edit.setMaximumDate(QDate.currentDate())
 
         if self._all_time:
             summary = self.db.get_subject_percentages()
-            self.range_label.setText("Showing: all time")
+            self.range_label.setText(tr("rep.showing_all"))
         else:
             start = self.from_edit.date().toString("yyyy-MM-dd")
             end = self.to_edit.date().toString("yyyy-MM-dd")
             summary = self.db.get_subject_percentages(start, end)
-            self.range_label.setText(f"Showing: {start}  →  {end}")
+            self.range_label.setText(tr("rep.showing", start=start, end=end))
         self._apply_summary(summary)
 
     def _apply_summary(self, summary: list[dict]) -> None:
@@ -180,7 +173,7 @@ class ReportPage(QWidget):
         for row, (item, color) in enumerate(zip(summary, colors)):
             name = QTableWidgetItem(swatch_icon(color), item["subject_name"])
             time_item = QTableWidgetItem(minutes_to_hm_text(item["total_minutes"]))
-            share = QTableWidgetItem(f"{item['percentage']:.1f}%")
+            share = QTableWidgetItem(localize_digits(f"{item['percentage']:.1f}%"))
             for cell in (time_item, share):
                 cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 0, name)
@@ -195,7 +188,7 @@ class ReportPage(QWidget):
     def _update_statistics(self, summary: list[dict]) -> None:
         if not summary:
             for card in (self.total_card, self.average_card, self.most_card, self.least_card):
-                card.set_value("No data")
+                card.set_value(tr("rep.no_data"))
             return
 
         total = sum(item["total_minutes"] for item in summary)

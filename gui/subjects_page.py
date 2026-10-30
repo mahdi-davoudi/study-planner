@@ -1,9 +1,5 @@
-"""'Subjects' page: add, rename and delete subjects."""
-
 from __future__ import annotations
-
 from typing import TYPE_CHECKING
-
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -20,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.widgets import Card, page_title
+from i18n import tr
 
 if TYPE_CHECKING:
     from database import DatabaseManager
@@ -39,14 +36,14 @@ class SubjectsPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 24)
         root.setSpacing(16)
-        root.addWidget(page_title("Manage Subjects"))
+        root.addWidget(page_title(tr("sub.title")))
 
-        add_card = Card("Add a subject")
+        add_card = Card(tr("sub.add_card"))
         add_row = QHBoxLayout()
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("Subject name")
+        self.name_edit.setPlaceholderText(tr("sub.placeholder"))
         self.name_edit.returnPressed.connect(self.add_subject)
-        add_btn = QPushButton("Add Subject")
+        add_btn = QPushButton(tr("sub.add_btn"))
         add_btn.setObjectName("primary")
         add_btn.clicked.connect(self.add_subject)
         add_row.addWidget(self.name_edit, 1)
@@ -54,9 +51,9 @@ class SubjectsPage(QWidget):
         add_card.add_layout(add_row)
         root.addWidget(add_card)
 
-        list_card = Card("Subject list")
+        list_card = Card(tr("sub.list_card"))
         self.table = QTableWidget(0, 2)
-        self.table.setHorizontalHeaderLabels(["Subject name", "Added"])
+        self.table.setHorizontalHeaderLabels([tr("sub.col_name"), tr("sub.col_added")])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -72,9 +69,9 @@ class SubjectsPage(QWidget):
 
         actions = QHBoxLayout()
         actions.addStretch(1)
-        self.rename_btn = QPushButton("Rename")
+        self.rename_btn = QPushButton(tr("sub.rename"))
         self.rename_btn.clicked.connect(self.rename_selected)
-        self.delete_btn = QPushButton("Delete Selected Subject")
+        self.delete_btn = QPushButton(tr("sub.delete"))
         self.delete_btn.setObjectName("danger")
         self.delete_btn.clicked.connect(self.delete_selected)
         actions.addWidget(self.rename_btn)
@@ -111,10 +108,10 @@ class SubjectsPage(QWidget):
     def add_subject(self) -> None:
         name = self.name_edit.text().strip()
         if not name:
-            QMessageBox.warning(self, "Error", "Enter a subject name.")
+            QMessageBox.warning(self, tr("common.error"), tr("sub.enter_name"))
             return
         if name in {s["name"] for s in self.db.get_subjects()}:
-            QMessageBox.information(self, "Notice", "This subject already exists.")
+            QMessageBox.information(self, tr("common.notice"), tr("sub.exists"))
             return
         self.db.add_subject(name)
         self.name_edit.clear()
@@ -126,13 +123,17 @@ class SubjectsPage(QWidget):
         if subject is None:
             return
         new_name, ok = QInputDialog.getText(
-            self, "Rename Subject", "New name:", QLineEdit.EchoMode.Normal, subject["name"]
+            self,
+            tr("sub.rename_title"),
+            tr("sub.new_name"),
+            QLineEdit.EchoMode.Normal,
+            subject["name"],
         )
         new_name = new_name.strip()
         if not ok or not new_name or new_name == subject["name"]:
             return
         if not self.db.rename_subject(subject["_id"], new_name):
-            QMessageBox.warning(self, "Error", "A subject with this name already exists.")
+            QMessageBox.warning(self, tr("common.error"), tr("sub.exists_other"))
             return
         self.refresh()
         self.subjectsChanged.emit()
@@ -143,9 +144,8 @@ class SubjectsPage(QWidget):
             return
         answer = QMessageBox.question(
             self,
-            "Confirm Delete",
-            f"Delete subject '{subject['name']}'?\n"
-            "(Previously logged study records for this subject will remain in reports.)",
+            tr("common.confirm_delete"),
+            tr("sub.delete_q", name=subject["name"]),
         )
         if answer != QMessageBox.StandardButton.Yes:
             return

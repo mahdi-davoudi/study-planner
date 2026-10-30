@@ -1,23 +1,17 @@
-"""Donut chart painted with QPainter (no matplotlib, correct RTL text)."""
-
 from __future__ import annotations
-
 import html
 import math
-
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPainterPath, QPaintEvent, QPen
 from PySide6.QtWidgets import QToolTip, QWidget
 
 from gui import theme
+from i18n import localize_digits, tr
 from utils.helpers import minutes_to_hm_text
 
 Item = tuple[str, int, QColor]  # (subject name, minutes, colour)
 
-
 class DonutChart(QWidget):
-    """Shows each subject's share of the total study time as a ring."""
-
     HOLE_RATIO = 0.62
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -32,7 +26,6 @@ class DonutChart(QWidget):
         self._total = sum(item[1] for item in self._items)
         self.update()
 
-    # ------------------------------------------------------------------
     def _ring(self) -> tuple[QPointF, float, float]:
         margin = 14
         side = max(min(self.width(), self.height()) - 2 * margin, 20)
@@ -47,8 +40,7 @@ class DonutChart(QWidget):
         if self._total <= 0:
             painter.setPen(QColor(theme.MUTED))
             painter.drawText(
-                self.rect(), Qt.AlignmentFlag.AlignCenter,
-                "No study data for\nthe selected period",
+                self.rect(), Qt.AlignmentFlag.AlignCenter, tr("donut.empty"),
             )
             return
 
@@ -91,24 +83,23 @@ class DonutChart(QWidget):
         painter.setPen(QColor(theme.MUTED))
         painter.drawText(
             QRectF(inner.left(), inner.center().y() + 4, inner.width(), 20),
-            Qt.AlignmentFlag.AlignCenter, "Total",
+            Qt.AlignmentFlag.AlignCenter, tr("common.total"),
         )
 
-    # ------------------------------------------------------------------
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         item = self._item_at(event.position())
         if item is None:
             QToolTip.hideText()
             return
         name, minutes, _color = item
-        pct = minutes / self._total * 100
+        pct = localize_digits(f"{minutes / self._total * 100:.1f}")
         QToolTip.showText(
             event.globalPosition().toPoint(),
-            f"<b>{html.escape(name)}</b><br>{minutes_to_hm_text(minutes)} · {pct:.1f}%",
+            f"<b>{html.escape(name)}</b><br>{minutes_to_hm_text(minutes)} · {pct}%",
             self,
         )
 
-    def leaveEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+    def leaveEvent(self, event) -> None:  
         QToolTip.hideText()
 
     def _item_at(self, pos: QPointF) -> Item | None:
@@ -118,7 +109,7 @@ class DonutChart(QWidget):
         dx, dy = pos.x() - center.x(), center.y() - pos.y()
         if not inner_r <= math.hypot(dx, dy) <= outer_r:
             return None
-        theta = (90.0 - math.degrees(math.atan2(dy, dx))) % 360.0  # clockwise from top
+        theta = (90.0 - math.degrees(math.atan2(dy, dx))) % 360.0  
         acc = 0.0
         for item in self._items:
             acc += 360.0 * item[1] / self._total
