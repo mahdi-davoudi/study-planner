@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
     QWidget,
+    QMessageBox,
 )
 
 from config import ICON_PATH
@@ -20,6 +21,7 @@ from gui.edit_logs_page import EditLogsPage
 from gui.report_page import ReportPage
 from gui.subjects_page import SubjectsPage
 from gui.widgets import globe_icon, theme_icon
+from gui.timer_page import IDLE, StudyTimer, TimerPage
 from i18n import LANGUAGES, manager, tr
 
 if TYPE_CHECKING:
@@ -36,7 +38,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(980, 640)
         if ICON_PATH.exists():
             self.setWindowIcon(QIcon(str(ICON_PATH)))
-
+        self.study_timer = StudyTimer()
         self._build_content()
         # Language and theme changes both rebuild the UI (texts / colours are read at build time).
         manager.languageChanged.connect(self._on_appearance_changed)
@@ -46,11 +48,13 @@ class MainWindow(QMainWindow):
     def _build_content(self) -> None:
         self.setWindowTitle(tr("app.name"))
         self.add_page = AddLogPage(self.db)
+        self.timer_page = TimerPage(self.db, self.study_timer)
         self.subjects_page = SubjectsPage(self.db)
         self.report_page = ReportPage(self.db)
         self.edit_page = EditLogsPage(self.db)
         self._pages: list[tuple[str, QWidget]] = [
             (tr("nav.add"), self.add_page),
+            (tr("nav.timer"), self.timer_page),
             (tr("nav.subjects"), self.subjects_page),
             (tr("nav.reports"), self.report_page),
             (tr("nav.edit"), self.edit_page),
@@ -149,10 +153,14 @@ class MainWindow(QMainWindow):
         self.add_page.logsChanged.connect(self.edit_page.refresh)
         self.edit_page.logsChanged.connect(self.add_page.refresh)
         self.edit_page.logsChanged.connect(self.report_page.refresh)
+        self.timer_page.logsChanged.connect(self.add_page.refresh)
+        self.timer_page.logsChanged.connect(self.report_page.refresh)
+        self.timer_page.logsChanged.connect(self.edit_page.refresh)
         self.subjects_page.subjectsChanged.connect(self.add_page.refresh_subjects)
+        self.subjects_page.subjectsChanged.connect(self.timer_page.refresh_subjects)
         self.subjects_page.subjectsChanged.connect(self.report_page.refresh)
         self.subjects_page.subjectsChanged.connect(self.edit_page.refresh)
-
+        
     def _on_nav_changed(self, row: int) -> None:
         if row < 0:
             return
@@ -160,3 +168,13 @@ class MainWindow(QMainWindow):
         # Pages may be stale (e.g. the date changed while the app stayed open).
         page = self._pages[row][1]
         page.refresh()  # type: ignore[attr-defined]
+        
+    def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+        if self.study_timer.state != IDLE:
+            answer = QMessageBox.question(
+                self, tr("common.notice"), tr("timer.quit_q")
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+        super().closeEvent(event)
