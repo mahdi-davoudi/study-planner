@@ -2,14 +2,21 @@ from __future__ import annotations
 import html
 import math
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPainterPath, QPaintEvent, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QMouseEvent, QPainter, QPainterPath, QPaintEvent, QPen
 from PySide6.QtWidgets import QToolTip, QWidget
-
 from gui import theme
 from i18n import localize_digits, tr
 from utils.helpers import minutes_to_hm_text
 
 Item = tuple[str, int, QColor]  # (subject name, minutes, colour)
+
+# Alignment and text flags are different enum types, so combine their int values.
+_CENTER_FLAGS = (
+    Qt.AlignmentFlag.AlignHCenter.value
+    | Qt.AlignmentFlag.AlignBottom.value
+    | Qt.TextFlag.TextWordWrap.value
+)
+
 
 class DonutChart(QWidget):
     HOLE_RATIO = 0.62
@@ -67,22 +74,37 @@ class DonutChart(QWidget):
             painter.setBrush(color)
             painter.drawPath(path)
 
-        # Centre label
-        painter.setPen(QColor(theme.TEXT))
+        self._paint_center(painter, inner)
+
+    def _paint_center(self, painter: QPainter, inner: QRectF) -> None:
+        text = minutes_to_hm_text(self._total)
+        max_width = inner.width() * 0.8
+
         big = QFont(self.font())
-        big.setPointSizeF(18)
         big.setBold(True)
+        size = 18.0
+        while size > 9.0:
+            big.setPointSizeF(size)
+            if QFontMetricsF(big).horizontalAdvance(text) <= max_width:
+                break
+            size -= 0.5
+        big.setPointSizeF(size)
+
+        center = inner.center()
         painter.setFont(big)
-        painter.drawText(
-            QRectF(inner.left(), inner.center().y() - 26, inner.width(), 30),
-            Qt.AlignmentFlag.AlignCenter, minutes_to_hm_text(self._total),
+        painter.setPen(QColor(theme.TEXT))
+        painter.drawText(  # bottom-aligned so it always sits just above "Total"
+            QRectF(center.x() - max_width / 2, center.y() - 44, max_width, 48),
+            _CENTER_FLAGS,
+            text,
         )
+
         small = QFont(self.font())
         small.setPointSizeF(9)
         painter.setFont(small)
         painter.setPen(QColor(theme.MUTED))
         painter.drawText(
-            QRectF(inner.left(), inner.center().y() + 4, inner.width(), 20),
+            QRectF(inner.left(), center.y() + 8, inner.width(), 20),
             Qt.AlignmentFlag.AlignCenter, tr("common.total"),
         )
 
@@ -99,7 +121,7 @@ class DonutChart(QWidget):
             self,
         )
 
-    def leaveEvent(self, event) -> None:  
+    def leaveEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         QToolTip.hideText()
 
     def _item_at(self, pos: QPointF) -> Item | None:
@@ -109,7 +131,7 @@ class DonutChart(QWidget):
         dx, dy = pos.x() - center.x(), center.y() - pos.y()
         if not inner_r <= math.hypot(dx, dy) <= outer_r:
             return None
-        theta = (90.0 - math.degrees(math.atan2(dy, dx))) % 360.0  
+        theta = (90.0 - math.degrees(math.atan2(dy, dx))) % 360.0  # clockwise from top
         acc = 0.0
         for item in self._items:
             acc += 360.0 * item[1] / self._total

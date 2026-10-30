@@ -1,7 +1,8 @@
 from __future__ import annotations
+import math
 import unicodedata
-from PySide6.QtCore import Qt, QRectF, QPointF
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QPen
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QLabel,
@@ -29,7 +30,6 @@ def muted_label(text: str = "", wrap: bool = True) -> QLabel:
 
 
 def is_rtl_text(text: str) -> bool:
-    """True when the first letter of the text is from a right-to-left script."""
     for char in text:
         if char.isalpha():
             return unicodedata.bidirectional(char) in ("R", "AL")
@@ -37,11 +37,6 @@ def is_rtl_text(text: str) -> bool:
 
 
 def align_visual_right(label: QLabel) -> None:
-    """Put the label's text at the visual right edge, for Persian and Latin alike.
-
-    Qt flips Left/Right for right-to-left paragraphs, so the flag must depend
-    on the text direction to get a consistent result.
-    """
     side = (
         Qt.AlignmentFlag.AlignLeft
         if is_rtl_text(label.text())
@@ -51,7 +46,6 @@ def align_visual_right(label: QLabel) -> None:
 
 
 def swatch_icon(color: str | QColor, size: int = 12) -> QIcon:
-    """A small rounded colour square used as a legend marker in tables."""
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
@@ -62,22 +56,51 @@ def swatch_icon(color: str | QColor, size: int = 12) -> QIcon:
     painter.end()
     return QIcon(pixmap)
 
+
 def globe_icon(color: str, size: int = 18) -> QIcon:
-    """Simple globe icon (circle + meridian + equator) drawn with QPainter."""
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pixmap)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setPen(QPen(QColor(color), 1.4))
-    p.setBrush(Qt.BrushStyle.NoBrush)
-    p.drawEllipse(QRectF(1.5, 1.5, size - 3, size - 3))
-    p.drawEllipse(QRectF(size * 0.33, 1.5, size * 0.34, size - 3))
-    p.drawLine(QPointF(1.5, size / 2), QPointF(size - 1.5, size / 2))
-    p.end()
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QPen(QColor(color), 1.4))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawEllipse(QRectF(1.5, 1.5, size - 3, size - 3))
+    painter.drawEllipse(QRectF(size * 0.33, 1.5, size * 0.34, size - 3))
+    painter.drawLine(QPointF(1.5, size / 2), QPointF(size - 1.5, size / 2))
+    painter.end()
     return QIcon(pixmap)
 
+
+def theme_icon(kind: str, color: str, size: int = 18) -> QIcon:
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    center = QPointF(size / 2, size / 2)
+    if kind == "sun":
+        painter.setPen(QPen(QColor(color), 1.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(center, size * 0.21, size * 0.21)
+        for step in range(8):
+            angle = math.radians(step * 45)
+            dx, dy = math.cos(angle), math.sin(angle)
+            painter.drawLine(
+                QPointF(center.x() + dx * size * 0.34, center.y() + dy * size * 0.34),
+                QPointF(center.x() + dx * size * 0.46, center.y() + dy * size * 0.46),
+            )
+    else:  # moon: a circle with a shifted circle cut out of it
+        outer = QPainterPath()
+        outer.addEllipse(QRectF(2, 2, size - 4, size - 4))
+        cut = QPainterPath()
+        cut.addEllipse(QRectF(size * 0.38, 0.5, size - 4, size - 4))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(color))
+        painter.drawPath(outer.subtracted(cut))
+    painter.end()
+    return QIcon(pixmap)
+
+
 class Card(QFrame):
-    """Rounded panel with an optional title and a vertical body layout."""
 
     def __init__(self, title: str = "", parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -102,12 +125,11 @@ class Card(QFrame):
 
 
 class StatCard(QFrame):
-    """A caption with a big value underneath (e.g. "This week" / "3h 20m")."""
 
     def __init__(
         self,
         caption: str,
-        color: str = theme.TEXT,
+        color: str | None = None,  # None -> theme.TEXT of the active theme
         small: bool = False,
         parent: QWidget | None = None,
     ) -> None:
@@ -124,7 +146,7 @@ class StatCard(QFrame):
         self._value.setTextFormat(Qt.TextFormat.PlainText)
         self._value.setWordWrap(small)
         self._value.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self._value.setStyleSheet(f"color: {color};")
+        self._value.setStyleSheet(f"color: {color or theme.TEXT};")
 
         layout.addWidget(self._caption)
         layout.addWidget(self._value)
@@ -134,11 +156,7 @@ class StatCard(QFrame):
 
 
 class NoWheelSpinBox(QSpinBox):
-    """Spin box that ignores the mouse wheel unless it has keyboard focus.
-
-    Prevents values from changing by accident while scrolling a list of them.
-    """
-
+   
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -151,7 +169,6 @@ class NoWheelSpinBox(QSpinBox):
 
 
 def scrollable(widget: QWidget) -> QScrollArea:
-    """Wrap a widget in a transparent, borderless vertical scroll area."""
     area = QScrollArea()
     area.setWidgetResizable(True)
     area.setFrameShape(QFrame.Shape.NoFrame)

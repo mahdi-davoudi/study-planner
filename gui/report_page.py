@@ -27,6 +27,10 @@ if TYPE_CHECKING:
     from database import DatabaseManager
 
 
+def _name_with_time(item: dict) -> str:
+    return f"\u2068{item['subject_name']}\u2069 ({minutes_to_hm_text(item['total_minutes'])})"
+
+
 def _to_qdate(day: date) -> QDate:
     return QDate(day.year, day.month, day.day)
 
@@ -47,7 +51,7 @@ class ReportPage(QWidget):
         root.setSpacing(16)
         root.addWidget(page_title(tr("rep.title")))
 
-        # --- Date range ---
+        # Date range 
         range_card = Card(tr("rep.range_card"))
         row = QHBoxLayout()
         row.setSpacing(8)
@@ -128,7 +132,6 @@ class ReportPage(QWidget):
 
     # Range handling
     def _set_range(self, start: date | None, end: date | None) -> None:
-        """Apply a preset. ``None, None`` means all time."""
         self._all_time = start is None or end is None
         if start is not None and end is not None:
             for edit, value in ((self.from_edit, start), (self.to_edit, end)):
@@ -138,7 +141,6 @@ class ReportPage(QWidget):
         self.refresh()
 
     def _on_date_edited(self) -> None:
-        """Keep From <= To when the user edits either date."""
         self._all_time = False
         sender = self.sender()
         if self.from_edit.date() > self.to_edit.date():
@@ -195,9 +197,5 @@ class ReportPage(QWidget):
         most, least = summary[0], summary[-1]
         self.total_card.set_value(minutes_to_hm_text(total))
         self.average_card.set_value(minutes_to_hm_text(round(total / len(summary))))
-        self.most_card.set_value(
-            f"{most['subject_name']} ({minutes_to_hm_text(most['total_minutes'])})"
-        )
-        self.least_card.set_value(
-            f"{least['subject_name']} ({minutes_to_hm_text(least['total_minutes'])})"
-        )
+        self.most_card.set_value(_name_with_time(most))
+        self.least_card.set_value(_name_with_time(least))

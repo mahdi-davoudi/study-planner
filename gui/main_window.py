@@ -19,13 +19,13 @@ from gui.add_log_page import AddLogPage
 from gui.edit_logs_page import EditLogsPage
 from gui.report_page import ReportPage
 from gui.subjects_page import SubjectsPage
-from gui.widgets import globe_icon
+from gui.widgets import globe_icon, theme_icon
 from i18n import LANGUAGES, manager, tr
 
 if TYPE_CHECKING:
     from database import DatabaseManager
 
-SIDEBAR_WIDTH = 240 
+SIDEBAR_WIDTH = 220
 
 
 class MainWindow(QMainWindow):
@@ -38,7 +38,9 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(str(ICON_PATH)))
 
         self._build_content()
-        manager.languageChanged.connect(self._on_language_changed)
+        # Language and theme changes both rebuild the UI (texts / colours are read at build time).
+        manager.languageChanged.connect(self._on_appearance_changed)
+        theme.manager.themeChanged.connect(self._on_appearance_changed)
 
     # (Re)building everything that contains translated text
     def _build_content(self) -> None:
@@ -56,12 +58,14 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._connect_signals()
 
-    def _on_language_changed(self, _language: str) -> None:
+    def _on_appearance_changed(self, _value: str) -> None:
+        # Rebuild after the button's click handler has returned, because the
+        # button that was clicked belongs to the widget tree being replaced.
         QTimer.singleShot(0, self._rebuild)
 
     def _rebuild(self) -> None:
         row = max(self.nav.currentRow(), 0)
-        self._build_content()  
+        self._build_content()  # setCentralWidget() schedules the old tree for deletion
         self.nav.setCurrentRow(row)
 
     def _build_ui(self) -> None:
@@ -74,7 +78,7 @@ class MainWindow(QMainWindow):
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
         sidebar.setFixedWidth(SIDEBAR_WIDTH)
-        if manager.is_rtl:  
+        if manager.is_rtl:  # the sidebar sits on the right, so the divider moves too
             sidebar.setStyleSheet(
                 "QWidget#sidebar { border-right: none; "
                 f"border-left: 1px solid {theme.BORDER}; }}"
@@ -82,9 +86,7 @@ class MainWindow(QMainWindow):
         side_layout = QVBoxLayout(sidebar)
         side_layout.setContentsMargins(12, 18, 12, 12)
 
-        # Header: brand + tagline on one side, language button on the other.
-        header = QHBoxLayout()
-        header.setSpacing(6)
+        # Header: brand + tagline, then the language and theme buttons.
         titles = QVBoxLayout()
         titles.setSpacing(0)
         brand = QLabel(tr("app.name"))
@@ -93,9 +95,15 @@ class MainWindow(QMainWindow):
         sub.setObjectName("brandSub")
         titles.addWidget(brand)
         titles.addWidget(sub)
-        header.addLayout(titles, 1)
-        header.addWidget(self._make_language_button(), 0, Qt.AlignmentFlag.AlignTop)
-        side_layout.addLayout(header)
+        side_layout.addLayout(titles)
+
+        tools = QHBoxLayout()
+        tools.setContentsMargins(8, 0, 8, 8)
+        tools.setSpacing(6)
+        tools.addWidget(self._make_language_button())
+        tools.addWidget(self._make_theme_button())
+        tools.addStretch(1)
+        side_layout.addLayout(tools)
 
         self.nav = QListWidget()
         self.nav.setObjectName("nav")
@@ -125,6 +133,17 @@ class MainWindow(QMainWindow):
         button.clicked.connect(lambda _checked=False: manager.toggle())
         return button
 
+    def _make_theme_button(self) -> QToolButton:
+        to_light = theme.manager.is_dark
+        button = QToolButton()
+        button.setObjectName("themeBtn")
+        button.setIcon(theme_icon("sun" if to_light else "moon", theme.TEXT))
+        button.setIconSize(QSize(18, 18))
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setToolTip(tr("theme.to_light" if to_light else "theme.to_dark"))
+        button.clicked.connect(lambda _checked=False: theme.manager.toggle())
+        return button
+
     def _connect_signals(self) -> None:
         self.add_page.logsChanged.connect(self.report_page.refresh)
         self.add_page.logsChanged.connect(self.edit_page.refresh)
@@ -140,4 +159,4 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(row)
         # Pages may be stale (e.g. the date changed while the app stayed open).
         page = self._pages[row][1]
-        page.refresh()  
+        page.refresh()  # type: ignore[attr-defined]

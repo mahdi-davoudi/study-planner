@@ -1,7 +1,5 @@
 from __future__ import annotations
-
 from datetime import date
-
 from PySide6.QtCore import QLibraryInfo, QObject, QSettings, Qt, QTranslator, Signal
 from PySide6.QtWidgets import QApplication
 
@@ -11,9 +9,7 @@ DEFAULT_LANGUAGE = "en"
 
 _PERSIAN_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
-# ---------------------------------------------------------------------------
 # Translations. Keys missing from a language fall back to English.
-# ---------------------------------------------------------------------------
 STRINGS: dict[str, dict[str, str]] = {
     "en": {
         # app / navigation
@@ -25,6 +21,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "nav.edit": "Edit Logs",
         "lang.switch_to": "Switch to {name}",
         "lang.short": "FA",
+        "theme.to_light": "Switch to light theme",
+        "theme.to_dark": "Switch to dark theme",
         # common
         "common.date": "Date",
         "common.total": "Total",
@@ -125,6 +123,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "nav.edit": "ویرایش سوابق",
         "lang.switch_to": "تغییر به {name}",
         "lang.short": "EN",
+        "theme.to_light": "تغییر به تم روشن",
+        "theme.to_dark": "تغییر به تم تاریک",
         "common.date": "تاریخ",
         "common.total": "مجموع",
         "common.today": "امروز",
@@ -227,7 +227,6 @@ MONTHS: dict[str, list[str]] = {
 
 
 class LanguageManager(QObject):
-    """Holds the current language, persists it and announces changes."""
 
     languageChanged = Signal(str)
 
@@ -248,15 +247,9 @@ class LanguageManager(QObject):
 
     @property
     def other_language(self) -> str:
-        """The language the toggle button would switch to."""
         return "en" if self._language == "fa" else "fa"
 
     def apply(self) -> None:
-        """Apply layout direction and Qt's own translations (Yes/No buttons...).
-
-        Call once after creating ``QApplication``; ``set_language`` calls it
-        again automatically.
-        """
         app = QApplication.instance()
         if not isinstance(app, QApplication):
             return
@@ -289,12 +282,10 @@ manager = LanguageManager()
 
 
 def localize_digits(text: str) -> str:
-    """Use Persian digits when the UI language is Persian."""
     return text.translate(_PERSIAN_DIGITS) if manager.language == "fa" else text
 
 
 def tr(key: str, **kwargs: object) -> str:
-    """Translate ``key`` into the current language and fill ``{placeholders}``."""
     text = STRINGS[manager.language].get(key) or STRINGS["en"].get(key) or key
     if kwargs:
         text = text.format(**kwargs)
@@ -302,18 +293,15 @@ def tr(key: str, **kwargs: object) -> str:
 
 
 def tr_n(key: str, n: int, **kwargs: object) -> str:
-    """Pick ``key.one`` or ``key.other`` by ``n``; ``{n}`` is available in the text."""
     suffix = "one" if n == 1 else "other"
     return tr(f"{key}.{suffix}", n=n, **kwargs)
 
 
 def month_name(month: int) -> str:
-    """Month name for 1..12."""
     return MONTHS[manager.language][month - 1]
 
 
 def format_date(day: date) -> str:
-    """Tooltip-style date: 'Fri, 30 Oct 2026' / 'جمعه 30 اکتبر 2026'."""
     weekday = WEEKDAYS[manager.language][day.weekday()]
     if manager.language == "en":
         return f"{weekday}, {day.day:02d} {month_name(day.month)} {day.year}"

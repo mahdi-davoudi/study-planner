@@ -1,7 +1,4 @@
-"""Application-wide paths and constants."""
-
 from __future__ import annotations
-
 import sys
 from pathlib import Path
 
@@ -25,4 +22,4 @@ ICON_PATH = RESOURCE_DIR / "assets" / "icons" / "icon.ico"
 SPIN_MAX_MINUTES = 720
 SPIN_STEP = 5
 
-DATE_FORMAT = "yyyy-MM-dd"  # Qt display format (matches ISO dates in the DB)
+DATE_FORMAT = "yyyy-MM-dd" 
