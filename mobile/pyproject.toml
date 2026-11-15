@@ -1,0 +1,17 @@
+[project]
+name = "study-planner"
+version = "1.0.0"
+description = "Study Planner"
+requires-python = ">=3.11"
+dependencies = ["flet", "flet-android-notifications==0.12.0"]
+
+[tool.flet]
+org = "com.mahdi"
+product = "Study Planner"
+company = "Your Name"
+
+[tool.flet.app]
+path = "src"
+
+[tool.flet.android.permission]
+"android.permission.SCHEDULE_EXACT_ALARM" = true
